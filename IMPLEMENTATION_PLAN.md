@@ -72,7 +72,30 @@ This is Session 1 of 9. Nothing exists yet except `CLAUDE.md`, `README.md`, and 
 
 ### Handoff notes
 
-*(filled during execution)*
+**Executed 2026-05-21. Scaffold is complete and verified.**
+
+What's on disk:
+- `pyproject.toml` — package name `elections-frames`, wheel target `src/elections_frames/`, extras `viz` (matplotlib + seaborn), `nlp` (langdetect, datasketch, scikit-learn), `llm` (openai), `dev` (ruff, pytest). Python `>=3.11`. No `tomli` dep — using stdlib `tomllib`.
+- `src/elections_frames/` — `__init__.py`, `data.py` (paths constants + auto-`mkdir` only; puller goes here in Session 2), `cleaning.py`, `classify.py`, `viz.py` (with a working `save_figure`), `diagnostics.py` (all 6 helpers from `_template`: `missingness_summary`, `missingness_pattern`, `distribution_summary`, `distribution_compare`, `before_after`, `compare_alternatives`), `prompts/__init__.py`.
+- `notebooks/` — `02_main.ipynb` (17 cells), `03_robustness.ipynb` (4 cells), `04_pipeline_eval.ipynb` (7 cells). All section headers per CLAUDE.md / plan. Cell IDs persisted. `NOTEBOOK_STRUCTURE.md` adapted from template with project-specific decision list. `_scratch/.gitkeep`.
+- `data/external/codebook.md` — v0 with 6 frame definitions + boundary-case notes; explicit reminder of blind labeling. `outlets.csv` skeleton with the 4 named edge cases pre-populated (verdicts blank — Session 3 fills them).
+- `data/{raw,processed}/.gitkeep`, `figures/.gitkeep`.
+- `tests/test_smoke.py` — 5 import-only tests, all green.
+- `.gitignore` — covers `data/raw/`, `data/processed/*.parquet`, `_scratch/`, caches, secrets.
+
+Decisions made during execution (not big enough for the change log, but worth knowing):
+- **English-language detector pinned to `langdetect`** (not fasttext). Rationale: GDELT records carry enough headline+lead text that langdetect's accuracy is sufficient; fasttext adds a ~125 MB model download with no benefit at this scale. If Session 3's probe set shows accuracy issues on short snippets, swap to `fasttext-langdetect` (Meta lid.176) — documented inline in `pyproject.toml`.
+- **No `tomli` dep**; we read `../secrets.toml` with stdlib `tomllib` (3.11+). Saves one dep.
+- **Notebooks committed as `.ipynb` only** (not jupytext-paired). User confirmed; matches "outputs are part of the GitHub deliverable" from `NOTEBOOK_STRUCTURE.md`.
+- **`viz.py` already has a working `save_figure`** (matplotlib-only — no Plotly/plotnine fallback since this project committed to matplotlib + seaborn in `README.md`). The three plotting helpers (`stacked_frame_bar`, `confusion_matrix_plot`, `per_election_panel`) are intentionally not pre-built; Session 7 builds them driven by actual analysis needs.
+
+Environment: project runs in conda env `portfolio` (Python 3.14.4) at `C:\Users\mou97\.conda\envs\portfolio\python.exe`. Editable install completed; `pytest` green (5/5). Future sessions should use the same env — do not create a `.venv`.
+
+For Session 2 (GDELT ingestion):
+- Read this handoff + the Session 2 "Context for resumption" block before starting.
+- `data.py` is currently just paths + auto-`mkdir`; add the puller, manifest, and provenance join there.
+- Verify election dates against public records (don't trust the rough "Nigeria 2023 / Kenya 2022 / Senegal 2024 / South Africa 2024" framing alone).
+- Use the four edge-case rows in `outlets.csv` as a hint — those domains will appear in the GDELT data and need to be matchable.
 
 ---
 
@@ -396,7 +419,7 @@ Track decisions made during execution that affect later sessions. Each entry sho
 
 | Session | Title | Status | Date | Notes |
 |---------|-------|--------|------|-------|
-| 1 | Project scaffolding & setup | Not started | | |
+| 1 | Project scaffolding & setup | Complete | 2026-05-21 | 5/5 smoke tests green; env: conda `portfolio` (3.14.4) |
 | 2 | GDELT ingestion module | Not started | | |
 | 3 | Cleaning + eval-set sampling + labeling handoff | Not started | | Triggers external dependency: Muhanad labels |
 | 4 | Classifier module + prompt v1 (parallel) | Not started | | Can run in parallel with labeling |

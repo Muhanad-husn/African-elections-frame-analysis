@@ -1,0 +1,5 @@
+outlet,domain,origin,edge_case_notes,verdict_rule
+BBC Africa,bbc.com/news/world/africa,Edge,"BBC World Service desk staffed partly by African journalists but editorially London-based; published under BBC banner. Question: count as International (publisher origin) or African (desk staffing)?",
+Al Jazeera English Africa desk,aljazeera.com,Edge,"AJE Africa coverage produced from Doha + Nairobi/Johannesburg bureaus. AJE is qatari-owned but the Africa desk is partly Africa-based. Question: same as BBC Africa.",
+Reuters Africa,reuters.com/world/africa,Edge,"Reuters has Africa correspondents but editorial control is London/NY. Wire copy. Question: count as International (control) or by-reporter location?",
+RFI Afrique,rfi.fr/fr/afrique,Edge,"French public radio's Africa service; partly francophone. Edge for the same reasons as BBC/AJE; also raises the English-only filter issue (Senegal coverage in particular).",

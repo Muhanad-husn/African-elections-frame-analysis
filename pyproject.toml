@@ -1,0 +1,63 @@
+[project]
+name = "elections-frames"
+version = "0.1.0"
+description = "Frame analysis of African elections coverage: African vs. international press, four elections, six-frame taxonomy."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Muhanad", email = "muhanad.a.husn@gmail.com" }]
+license = { text = "MIT" }
+
+dependencies = [
+    "pandas>=2.2",
+    "numpy>=1.26",
+    "pyarrow>=15.0",
+    "requests>=2.32",
+    "requests-cache>=1.2",
+    "tqdm>=4.66",
+    "jupyter>=1.0",
+    "ipykernel>=6.29",
+]
+
+[project.optional-dependencies]
+viz = [
+    "matplotlib>=3.8",
+    "seaborn>=0.13",
+]
+nlp = [
+    # English-language filter for GDELT records (Session 3).
+    # Pragmatic pick: langdetect is light and adequate for headline+lead text.
+    # If Session 3's probe shows accuracy issues on short snippets, swap to
+    # fasttext-langdetect (Meta lid.176, ~125 MB model download).
+    "langdetect>=1.0.9",
+    # Near-duplicate detection via MinHash (Session 3 dedup decision block).
+    "datasketch>=1.6",
+    "scikit-learn>=1.4",
+]
+llm = [
+    # NVIDIA NIM is OpenAI-compatible (see ../NVIDIA_API_request_sample.py).
+    # API key resolved from ../secrets.toml under [NVIDIA] API_KEY.
+    # tomllib is stdlib (Python 3.11+) — no extra dep needed for secrets read.
+    "openai>=1.0",
+]
+dev = [
+    "ruff>=0.4",
+    "pytest>=8.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/elections_frames"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Local caches
+.cache/
+.ipynb_checkpoints/
+
+# Raw GDELT pulls (large, regenerable from manifest)
+data/raw/*
+!data/raw/.gitkeep
+
+# Processed parquets (regenerable from pipeline; manifest tracks provenance)
+data/processed/*.parquet
+
+# Hand-labeled eval set is committed as ground truth — DO NOT ignore.
+# (No exclusion needed; this comment is here so future contributors know.)
+
+# Scratch notebooks
+notebooks/_scratch/*
+!notebooks/_scratch/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets (this project reads ../secrets.toml from the monorepo parent)
+secrets.toml
+.env
