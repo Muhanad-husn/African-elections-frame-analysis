@@ -96,3 +96,148 @@ def test_pull_gkg_window_smoke_kenya_2022():
     df = load_cached("kenya_2022")
     assert len(df) > 0, "load_cached returned empty DataFrame after a successful pull"
     assert {"GKGRECORDID", "DATE", "SourceCommonName", "election"} <= set(df.columns)
+
+
+# ---------------------------------------------------------------------------
+# Cleaning module smoke tests (Session 3)
+# ---------------------------------------------------------------------------
+
+def _toy_df():
+    """Tiny synthetic GKG-shaped DataFrame for offline cleaning smoke tests."""
+    import pandas as pd
+    return pd.DataFrame([
+        {  # African outlet, Kenya election
+            "GKGRECORDID": "a",
+            "DATE": pd.Timestamp("2022-08-09T12:00:00+00:00"),
+            "SourceCommonName": "nation.africa",
+            "DocumentIdentifier": "https://nation.africa/kenya/news/election-results",
+            "V1Themes": "ELECTION;DEMOCRACY",
+            "V2EnhancedThemes": "ELECTION,0;DEMOCRACY,10",
+            "V1Locations": "",
+            "V21AllNames": "William Ruto,0;Raila Odinga,30",
+            "V2Tone": "",
+            "election": "kenya_2022",
+        },
+        {  # International outlet, US politics — should NOT pass relevance
+            "GKGRECORDID": "b",
+            "DATE": pd.Timestamp("2022-08-09T13:00:00+00:00"),
+            "SourceCommonName": "yahoo.com",
+            "DocumentIdentifier": "https://yahoo.com/sports/baseball-trade",
+            "V1Themes": "SPORTS",
+            "V2EnhancedThemes": "SPORTS,0",
+            "V1Locations": "",
+            "V21AllNames": "Some Player,0",
+            "V2Tone": "",
+            "election": "kenya_2022",
+        },
+        {  # BBC Africa URL — should be Edge_BBC_Africa
+            "GKGRECORDID": "c",
+            "DATE": pd.Timestamp("2022-08-09T14:00:00+00:00"),
+            "SourceCommonName": "bbc.com",
+            "DocumentIdentifier": "https://www.bbc.com/news/world-africa-12345",
+            "V1Themes": "ELECTION",
+            "V2EnhancedThemes": "ELECTION,0",
+            "V1Locations": "",
+            "V21AllNames": "Kenya,0",
+            "V2Tone": "",
+            "election": "kenya_2022",
+        },
+    ])
+
+
+def test_attribute_outlet_origin_basic():
+    from elections_frames.cleaning import attribute_outlet_origin
+
+    out = attribute_outlet_origin(_toy_df())
+    by_id = dict(zip(out["GKGRECORDID"], out["outlet_origin"]))
+    assert by_id["a"] == "African"
+    assert by_id["b"] == "International"
+    assert by_id["c"] == "Edge_BBC_Africa"
+
+
+def test_filter_relevant_word_boundary():
+    """`Ba` (Senegal candidate) must not match every word with `ba` in it."""
+    import pandas as pd
+
+    from elections_frames.cleaning import filter_relevant
+    from elections_frames.data import ELECTIONS
+
+    df = pd.DataFrame([
+        {  # Real Senegal candidate "Amadou Ba" — should match
+            "DocumentIdentifier": "",
+            "V21AllNames": "Amadou Ba,0",
+            "V2EnhancedThemes": "ELECTION,0",
+            "V1Themes": "ELECTION",
+            "SourceCommonName": "seneweb.com",
+        },
+        {  # "baseball" contains "ba" but is NOT election content
+            "DocumentIdentifier": "https://yahoo.com/sports/baseball-trade",
+            "V21AllNames": "Some Player,0",
+            "V2EnhancedThemes": "SPORTS,0",
+            "V1Themes": "SPORTS",
+            "SourceCommonName": "yahoo.com",
+        },
+    ])
+    kept, _ = filter_relevant(df, ELECTIONS["senegal_2024"], method="hybrid")
+    assert len(kept) == 1
+    assert kept.iloc[0]["SourceCommonName"] == "seneweb.com"
+
+
+def test_canonicalize_url_strips_tracking():
+    from elections_frames.cleaning import canonicalize_url
+
+    assert canonicalize_url("https://www.bbc.com/news/world-africa-12345/") == "bbc.com/news/world-africa-12345"
+    assert canonicalize_url(
+        "https://news.example.com/article?utm_source=twitter&id=42&utm_campaign=foo#section"
+    ) == "news.example.com/article?id=42"
+
+
+def test_deduplicate_collapses_syndication():
+    """Three rows with identical metadata snippet should collapse to one."""
+    import pandas as pd
+
+    from elections_frames.cleaning import deduplicate
+
+    rows = [
+        {
+            "DocumentIdentifier": f"https://outlet{i}.example.com/article",
+            "text_snippet": "Title: same story | Names: William Ruto, Raila Odinga | Themes: ELECTION, DEMOCRACY",
+            "DATE": pd.Timestamp("2022-08-09T12:00:00+00:00"),
+        }
+        for i in range(3)
+    ]
+    rows.append({  # distinct snippet
+        "DocumentIdentifier": "https://other.example.com/article",
+        "text_snippet": "Title: different story | Names: someone else | Themes: SPORTS",
+        "DATE": pd.Timestamp("2022-08-09T13:00:00+00:00"),
+    })
+    df = pd.DataFrame(rows)
+    deduped, counts = deduplicate(df, threshold=0.8)
+    assert counts["n_text_duplicates"] == 2
+    assert len(deduped) == 2
+
+
+def test_sample_eval_candidates_returns_labeled_schema():
+    """The candidates DataFrame must carry the columns the labeling UI needs."""
+    import pandas as pd
+
+    from elections_frames.cleaning import sample_eval_candidates
+
+    vote_day = pd.Timestamp("2022-08-09T00:00:00+00:00")
+    df = pd.DataFrame([
+        {
+            "GKGRECORDID": f"r{i}",
+            "DATE": vote_day + pd.Timedelta(days=(i % 60) - 30),
+            "SourceCommonName": "nation.africa" if i % 2 == 0 else "yahoo.com",
+            "DocumentIdentifier": f"https://example.com/{i}",
+            "election": "kenya_2022",
+            "outlet_origin": "African" if i % 2 == 0 else "International",
+            "text_snippet": "Title: example",
+        }
+        for i in range(120)
+    ])
+    sampled = sample_eval_candidates(df, target_total=40)
+    required = {"frame_labels", "labeler_notes", "too_thin", "labeled", "labeled_at"}
+    assert required <= set(sampled.columns)
+    assert all(v == [] for v in sampled["frame_labels"])
+    assert sampled["labeled"].sum() == 0

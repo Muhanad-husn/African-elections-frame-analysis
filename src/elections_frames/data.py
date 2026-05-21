@@ -108,11 +108,23 @@ class Election:
 ELECTIONS: dict[str, Election] = {
     # en.wikipedia.org/wiki/2023_Nigerian_presidential_election
     # Bola Tinubu (APC) defeated Atiku Abubakar (PDP) and Peter Obi (LP).
+    # Keyword lists broadened in Session 3 after the initial draft under-recalled
+    # in Senegal/Kenya (only 42/41 hybrid hits per ±30-day probe slot-per-day).
+    # Broadening rationale lives in the relevance-filter decision block of
+    # `notebooks/02_main.ipynb`. Keywords are word-boundary-matched
+    # case-insensitively (see `cleaning.filter_relevant`).
     "nigeria_2023": Election(
         key="nigeria_2023",
         name="Nigeria 2023 presidential",
         date=datetime(2023, 2, 25, tzinfo=UTC),
-        keywords=("Nigeria", "Tinubu", "Atiku", "Obi", "INEC", "APC", "PDP"),
+        keywords=(
+            "Nigerian", "Nigeria",
+            "Tinubu", "Bola Tinubu",
+            "Atiku", "Atiku Abubakar",
+            "Peter Obi",
+            "INEC",
+            "APC", "PDP", "Labour Party",
+        ),
     ),
     # en.wikipedia.org/wiki/2022_Kenyan_general_election
     # William Ruto defeated Raila Odinga.
@@ -120,7 +132,13 @@ ELECTIONS: dict[str, Election] = {
         key="kenya_2022",
         name="Kenya 2022 general",
         date=datetime(2022, 8, 9, tzinfo=UTC),
-        keywords=("Kenya", "Ruto", "Odinga", "IEBC", "Kenyatta"),
+        keywords=(
+            "Kenyan", "Kenya",
+            "Ruto", "William Ruto",
+            "Raila", "Odinga", "Raila Odinga",
+            "Uhuru", "Kenyatta",
+            "IEBC", "UDA", "Azimio",
+        ),
     ),
     # en.wikipedia.org/wiki/2024_Senegalese_presidential_election
     # Originally scheduled 2024-02-25; postponed by President Sall and held on
@@ -131,7 +149,14 @@ ELECTIONS: dict[str, Election] = {
         key="senegal_2024",
         name="Senegal 2024 presidential",
         date=datetime(2024, 3, 24, tzinfo=UTC),
-        keywords=("Senegal", "Faye", "Sall", "Sonko", "Ba"),
+        keywords=(
+            "Senegalese", "Senegal",
+            "Faye", "Bassirou", "Diomaye", "Bassirou Diomaye",
+            "Sall", "Macky", "Macky Sall",
+            "Sonko", "Ousmane Sonko",
+            "Amadou Ba",
+            "PASTEF",
+        ),
     ),
     # en.wikipedia.org/wiki/2024_South_African_general_election
     # ANC lost its parliamentary majority for the first time since 1994.
@@ -139,7 +164,16 @@ ELECTIONS: dict[str, Election] = {
         key="south_africa_2024",
         name="South Africa 2024 general",
         date=datetime(2024, 5, 29, tzinfo=UTC),
-        keywords=("South Africa", "Ramaphosa", "ANC", "DA", "MK", "EFF"),
+        keywords=(
+            "South Africa", "South African",
+            "Ramaphosa", "Cyril Ramaphosa",
+            "Malema", "Julius Malema",
+            "Zuma", "Jacob Zuma",
+            "ANC", "African National Congress",
+            "DA Party", "Democratic Alliance",
+            "MK Party", "uMkhonto we Sizwe",
+            "EFF", "Economic Freedom Fighters",
+        ),
     ),
 }
 

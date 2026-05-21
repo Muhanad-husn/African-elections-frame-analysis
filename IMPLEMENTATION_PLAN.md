@@ -126,14 +126,52 @@ Project scaffolding is complete. The GDELT 2.0 GKG is the only data source for a
 
 ### Completion criteria
 
-- [ ] All four ±30-day windows pulled and cached
-- [ ] `manifest.json` committed with file IDs
-- [ ] Smoke test passes
-- [ ] Notebook cell shows row counts per election
+- [x] Smoke test passes (live `GDELT_LIVE=1` round-trip green; 7/7 offline tests green)
+- [x] `manifest.json` committed with file IDs (currently 4 smoke slots; will grow with background pulls)
+- [x] Notebook cell shows row counts per election (added at `notebooks/02_main.ipynb` §3; reads from cache, no pull)
+- [ ] All four ±30-day windows pulled and cached — **deferred to user-triggered background script `scripts/pull_all.py`** (multi-hour, multi-GB; user chose at session start to ship the module + smoke and defer the I/O wait)
 
 ### Handoff notes
 
-*(filled during execution)*
+**Executed 2026-05-21. Module + smoke complete; full pulls deferred to background.**
+
+What's on disk:
+
+- `src/elections_frames/data.py` — full implementation (~270 lines). Public API: `pull_gkg_window`, `download_slot`, `load_cached`, `outlet_provenance_join`, plus `ELECTIONS` dict and `Election` dataclass. Constants: `GDELT_BASE_URL`, `SLOT_INTERVAL_MINUTES=15`, `GKG_COLUMNS` (full 27-col schema), `KEEP_COLUMNS` (9 cols kept on load — cuts memory >50%).
+- `tests/test_smoke.py` — added `test_elections_metadata`, `test_iter_slots_at_15min_boundary`, and the env-var-gated live `test_pull_gkg_window_smoke_kenya_2022`. 8 tests total: 7 pass offline, the live one passes when `GDELT_LIVE=1`.
+- `scripts/pull_all.py` — CLI wrapper for the background full pull. Defaults to all four elections, ±30 days. Idempotent.
+- `notebooks/02_main.ipynb` — code cell inserted after §3 ("Ingestion status") that loads cached data per election and reports rows/unique-outlets/unknown-origin/cached-yes-or-no.
+- `data/raw/kenya_2022/` — 4 GKG zips (~22 MB) from the smoke pull (vote day 00:00–00:45 UTC).
+- `data/raw/manifest.json` — committed; format: `{election_key: [sorted_slugs]}`. `.gitignore` updated to commit the manifest (`!data/raw/manifest.json`) while still ignoring the bulky zip archives.
+
+Election dates (verified 2026-05-21 via WebSearch, sources cited in `data.py` docstrings):
+
+- Nigeria 2023 presidential: **2023-02-25** (Tinubu / APC)
+- Kenya 2022 general: **2022-08-09** (Ruto / UDA)
+- Senegal 2024 presidential: **2024-03-24** (Faye / PASTEF; postponed from original 2024-02-25 — comment in code explains the choice to center the window on actual vote day, not original schedule)
+- South Africa 2024 general: **2024-05-29** (ANC lost majority for first time since 1994)
+
+Smoke-pull data quality sanity check (Kenya 2022, 1 hour of vote day, 4 slots):
+
+- 5,519 records, 1,156 unique outlets — GKG firehose is fat (~5,500 rows/hour even on a single hour)
+- Top sources are predictable aggregators (iHeart, Yahoo, MSN, MENAFN, Daily Mail, etc.)
+- Provenance join already matched 10 rows against the four `outlets.csv` edge cases — Session 3's outlet attribution decision block has actual rows to chew on, which is reassuring
+
+Decisions made during execution (worth knowing, not big enough for the change log):
+
+- **`outlet_provenance_join` is a Session-2 pragmatic stub.** It does a simple bare-domain substring match against `outlets.csv`. The four named edge cases have full paths in the sheet (`bbc.com/news/world/africa`, etc.); the current match only uses the bare domain (`bbc.com`), so BBC main vs. BBC Africa is not yet distinguished. **Session 3 must refine this** — that's exactly what the outlet-attribution decision block is for. Path-sensitive matching is needed for the four edge cases plus bulk resolution of the long tail of unknowns.
+- **Column reduction at load time.** `load_cached` defaults to keeping only 9 of the 27 GKG columns (GCAM, embed columns, etc. dropped). Saves >50% RAM on a full corpus. Pass `keep_columns=` to override if Session 3 wants tone/locations data the default already includes the most useful fields.
+- **`DATE` parsing.** UTC datetime; rows that fail to parse are dropped silently — GKG occasionally has malformed lines, and `on_bad_lines="skip"` + `errors="replace"` at the CSV level plus `errors="coerce"` at the datetime level means we drop bad rows rather than crash. Acceptable for this volume; documented inline.
+- **CACHE_DIR (project root `.cache/`) is created but unused.** Carry-over from Session 1 scaffold; harmless. Future sessions may use it for the LLM response cache.
+
+Disk-usage expectation for the background full pull: roughly **5.5 MB compressed per 15-min slot × 96 slots/day × 61 days × 4 elections ≈ 130 GB total**. Make sure there's enough free disk before kicking it off. If disk-constrained, the manifest + downstream parquets are the ground-truth artifacts — the raw zips can be deleted and re-pulled at any time.
+
+For Session 3:
+
+1. **Run the background pull first.** `python scripts/pull_all.py` from project root. Expect hours; idempotent so it's safe to restart. The notebook §3 cell will populate row counts as elections finish.
+2. The outlet-attribution decision block is now empirically grounded — `load_cached(election).SourceCommonName.value_counts()` will show the unknown long tail that needs resolving. The four edge-case rows already matched in the smoke pull are a sanity check that the join wiring works; the rule + verdicts are still Session 3's job.
+3. `pyproject.toml` already has `langdetect`, `datasketch`, `scikit-learn` in the `nlp` extra — install with `pip install -e ".[nlp]"` before starting Session 3.
+4. `outlet_provenance_join` will need a refined version. Consider exposing it as `cleaning.attribute_outlet_origin` (in `cleaning.py`) rather than expanding `data.py` — `data.py` is the I/O layer, `cleaning.py` is the cleanup layer.
 
 ---
 
@@ -178,7 +216,67 @@ Cached GDELT records are on disk. Outlet provenance has been joined but ~unknown
 
 ### Handoff notes
 
-*(filled during execution — note any candidate articles flagged as ambiguous during sampling, since those will inform Session 5's prompt iteration)*
+**Executed 2026-05-21. Cleaning pipeline complete; 250 stratified eval candidates ready for Muhanad to hand-label.**
+
+What's on disk:
+
+- `src/elections_frames/cleaning.py` (~620 lines). Public surface: `attribute_outlet_origin`, `collapse_edge_to_international`, `filter_english`, `filter_relevant`, `deduplicate`, `canonicalize_url`, `build_text_snippet`, `load_probe`, `iter_cached_zips`, `run_pipeline_election`, `sample_eval_candidates`. Streams a single election through the full pipeline in `batch_size=200` chunks (≈ 2 days of GKG slots per batch) so memory stays bounded.
+- `data/external/outlets.csv` — finalized. Four named edge cases have verdicts in the file; rule + rationale documented column-by-column. Path-based detection works only for BBC Africa (`bbc.com/news/world-africa-*`) and RFI Afrique (`rfi.fr/fr/afrique`, `rfi.fr/en/africa`); AJE and Reuters URL paths don't separate region from main feed (empirical finding from probe), so those fold to International by publisher-origin rule.
+- `data/processed/articles_clean.parquet` — **79,372 cleaned articles** (combined; per-election parquets also written). Schema: 9 GDELT columns + `election`, `outlet_origin`, `text_snippet`.
+- `data/processed/pipeline_counts.csv` — per-election row-count progression (raw → relevant → english → dedup) + per-run timing.
+- `data/external/eval_set_candidates.parquet` — **250 stratified candidates**, 124 African / 126 International, 40 strata (4 elections × 2 origins × 5 week-buckets) populated 6–8 each. All `frame_labels` blank — Muhanad fills these in via the labeling notebook.
+- `notebooks/02_main.ipynb` — three full five-part decision blocks (outlet attribution, relevance filter, dedup) + structured-dataset preview + eval-sampling decision block. All cells are pre-wired against the artifacts above; the notebook reads end-to-end without re-running the pipeline (just `articles_clean.parquet` reads).
+- `notebooks/eval_labeling.ipynb` — ipywidgets-based labeling UI. No LLM suggestions visible. Saves to `data/external/eval_set.parquet` after every label; resumable.
+- `docs/labeling_handoff.md` — 1-page guide for Muhanad.
+- `scripts/run_cleaning.py` — CLI wrapper for the multi-hour pipeline run (idempotent).
+- `tests/test_smoke.py` — 5 new cleaning-module tests (outlet attribution, word-boundary keyword match, URL canonicalization, dedup syndication, sampling schema). **All 15 offline tests green; 2 live tests skipped as designed.**
+
+**Per-election pipeline counts (full corpus, hybrid relevance + dedup@0.8):**
+
+| Election | Raw rows | Relevant | English | After dedup | Wall time |
+|---|---:|---:|---:|---:|---:|
+| Nigeria 2023 | 6,621,830 | 40,776 | 40,223 | 29,724 | 68.7 min |
+| Kenya 2022 | 6,587,750 | 10,147 | 9,955 | 6,119 | 58.8 min |
+| Senegal 2024 | 8,875,777 | 4,400 | 4,320 | 3,820 | 73.6 min |
+| South Africa 2024 | 8,604,730 | 44,043 | 43,740 | 39,709 | 87.2 min |
+| **TOTAL** | **30,690,087** | **99,366** | **98,238** | **79,372** | **4.8 hrs** |
+
+**Per-election × origin split (cleaned corpus, edge labels folded into International for headline analysis):**
+
+| Election | African | International | Total |
+|---|---:|---:|---:|
+| Nigeria 2023 | 14,755 | 14,969 | 29,724 |
+| Kenya 2022 | 3,778 | 2,341 | 6,119 |
+| Senegal 2024 | 585 | 3,235 | 3,820 |
+| South Africa 2024 | 9,147 | 30,562 | 39,709 |
+
+Senegal's African-outlet count (585) is the smallest by far — the English-language filter is excluding the French and Wolof-language Senegalese press. **This is a real limitation** and should be called out in Section 10 of `02_main.ipynb` (Limitations). Senegal coverage is reachable via international wires (`reuters.com`, `aljazeera.com`, etc.) but local Senegalese framing is largely missing.
+
+Decisions logged during execution:
+
+- **(Decision Log #1) Classification text = GKG metadata only** (URL title-slug + V21AllNames + V2EnhancedThemes). No live HTML scraping. Documented in `outlets.csv` and the cleaning module. Trade reliability + reproducibility for some classifier precision.
+- **(Decision Log #2) Labeling UI = ipywidgets, not Streamlit.** Same env as everything else, no port management.
+- **Edge-case rule:** only BBC Africa and RFI Afrique are URL-detectable. AJE and Reuters URL paths don't separate region; they roll up to International by publisher-origin rule. `Edge_BBC_Africa` (27 rows in corpus) and `Edge_RFI_Afrique` (73 rows) labels are retained for the robustness check (re-folding as African) — see `03_robustness.ipynb` plan.
+- **Keyword broadening + word-boundary regex.** Initial substring matching produced 40–70% false positives (`avocado` matched `Ba`, `bafana` matched `Ba`, etc.). Word-boundary fix collapsed false positives to ~10–15% (eyeball precision check). Keyword sets in `data.py` were broadened from 5–7 to 10–14 tokens each.
+- **Pipeline ordering: relevance filter before English filter.** Vectorized regex on 1.1M rows/batch vs. row-wise `langdetect` on ~1,500 rows/batch — major speedup.
+- **Dedup threshold 0.8.** Decision was not sensitive (0.7–0.95 differed by <3% on the probe; no false merges observed at any threshold).
+
+**Cross-election contamination, known and logged:**
+
+`"Labour Party"` (Nigeria 2023 keyword) matched UK Labour Party coverage during the same window. Dedup correctly collapses syndicated wire copy of UK politics, but the residual UK-politics rows remain in the corpus. This is partly why Nigeria 2023's `International` share is so high (14,969 vs. 14,755 African — atypical balance). The LLM classifier in Session 5 will get a third opportunity to filter these out via the "is this article actually about the named election?" check we can build into the prompt.
+
+For Session 5 (eval loop + prompt iteration), when Muhanad finishes labeling:
+
+1. **Read `data/external/eval_set.parquet`.** Treat as immutable — never overwrite from pipeline output.
+2. **Class-imbalance diagnostic first.** Per-frame counts from the hand labels will tell us whether stratification is OK or whether the eval set is heavily skewed to one or two frames. If skewed, top up via additional candidates (the candidate file has columns ready for this; we just sample more).
+3. **First prompt iteration target: "is this article about the named election?"** Add a relevance check to prompt v2 — return an `off_topic` flag when the article is e.g. UK Labour Party coverage that slipped through. The eval set's `too_thin=True` rows are exactly the kind of cross-election contamination the prompt should catch.
+4. **The classifier already takes GKG metadata as input** (Session-4 smoke confirms this works), so no plumbing changes are needed for Session 5 — just iterate the prompt against `eval_set.parquet`.
+5. **Use the labeling notebook's `labeler_notes` column.** It contains Muhanad's free-text observations on boundary cases (security ↔ process, democracy ↔ process, etc.) — these are direct input to the taxonomy granularity decision block in `04_pipeline_eval.ipynb`.
+
+For Session 7 (analysis + hero figure):
+
+- Senegal's small African-outlet count means the Senegal panel in the hero figure will be visually thin on the African side. Plan: either (a) keep the four-panel grid honest and let Senegal show what it shows, or (b) annotate Senegal's African bar with its sample size. Decide in Session 7.
+- The intra-African breakdown (Section 7 #3 of `02_main.ipynb`) is now empirically grounded — 28,265 African rows give enough headroom for a per-country breakdown within African.
 
 ---
 
@@ -208,14 +306,56 @@ This session can be done while Muhanad is hand-labeling the eval set — there's
 
 ### Completion criteria
 
-- [ ] `classify_article` returns valid structured output for 5–10 articles
-- [ ] `llm_cost.csv` has a smoke-run row with non-zero tokens
-- [ ] Mocked test passes; live test passes when env var set
-- [ ] Prompt v1 saved in `src/elections_frames/prompts/v1.py` with a docstring noting "v1 — initial draft, no eval data yet"
+- [x] `classify_article` returns valid structured output for 5 articles (live `NVIDIA_LIVE=1` smoke green — all 5 parsed + validated)
+- [x] `llm_cost.csv` initialized + populated with 9 rows (5 successful + 3 transient retries + 1 retry-then-success) across 5 articles
+- [x] Mocked test passes (3 mocked tests covering success, parse-error fallthrough, and prompt-message structure); live test passes when `NVIDIA_LIVE=1`
+- [x] Prompt v1 saved at `src/elections_frames/prompts/v1.py` with docstring noting "v1 — initial draft, no eval data yet"
 
 ### Handoff notes
 
-*(filled during execution — note any prompt-design surprises that prompt iteration in Session 5 should address)*
+**Executed 2026-05-21. Classifier + prompt v1 complete; verified end-to-end against the real NVIDIA NIM endpoint.**
+
+What's on disk:
+
+- `src/elections_frames/classify.py` (~250 lines). Public surface: `FrameClassification` (Pydantic schema), `ClassifyResult` (dataclass with parsed output + per-call metadata), `classify_article(text, ...)`. Internal: secrets loader (env var or `../secrets.toml`), OpenAI-compatible client builder, append-only cost-log writer.
+- `src/elections_frames/prompts/v1.py` — codebook-grounded system prompt (~4.8K chars) + `render_messages(text)` helper. Three synthesized few-shot examples (security+process, economy, democracy). No content from `eval_set.parquet` or any specific real article.
+- `src/elections_frames/prompts/__init__.py` — `get(version)` import helper so `classify.py` drives any version uniformly.
+- `tests/test_classify_smoke.py` — 4 tests: mocked success path, mocked parse-error fallthrough (verifies retry + fallback wiring), prompt structure check, env-var-gated live round-trip. All 3 offline pass; live passes with `NVIDIA_LIVE=1`.
+- `data/processed/llm_cost.csv` — initialized; 9 rows from the live smoke (5 articles, 3 retries needed for transient errors).
+
+Live smoke results (Kenya 2022, 5 GKG metadata descriptors):
+
+| # | Primary | Confidence | Frames | Tokens (in/out) | Duration |
+|---|---------|-----------:|--------|-----------------|---------:|
+| 1 | process | 0.10 | [process] | 2499/82 | 855s |
+| 2 | identity | 0.90 | [identity, security] | 2958/94 | 32s |
+| 3 | economy | 0.70 | [economy] | 1147/94 | 397s |
+| 4 | economy | 0.90 | [economy, corruption] | 1175/96 | 334s |
+| 5 | process | 0.10 | [process] | 1584/80 | 23s |
+
+Decisions made during execution:
+
+- **Text-source agnosticism.** Per user choice at Session 4 start, `classify_article` accepts `text: str` with no opinion on whether that text is article body, GKG metadata, or hybrid. The production `text_snippet` definition is **Session 3's decision** — to be a five-part block in `02_main.ipynb`. Two of the five smoke classifications returned `primary=process, conf=0.10` (the "input too thin" escape valve in the prompt) — direct evidence that GKG-metadata-only descriptors lose framing signal. This is useful input for the Session 3 decision: pure metadata is likely insufficient; URL-scraping or a hybrid is probably needed.
+- **Cost units.** Logging input/output tokens + duration_seconds only — no USD column yet. Per-token rates for NVIDIA NIM hosted DeepSeek vary; analysis-time conversion (in `04_pipeline_eval.ipynb`) is cleaner than baking in rates now.
+- **DeepSeek thinking mode = off.** `extra_body={"chat_template_kwargs": {"thinking": False}}` matches the project's sample script and saves token cost. Session 5 should A/B `thinking=True` against eval scores — `classify_article` exposes the param.
+- **Temperature = 0.0** for deterministic classification (overriding the `temperature=1` in the sample script, which is wrong for a classifier).
+- **`response_format={"type": "json_object"}`** — standard OpenAI-compatible JSON mode. NIM supports it. Pydantic validates on our side.
+- **Retry policy.** 2 retries with exponential backoff on `RateLimitError`, `APIConnectionError`, `APITimeoutError`, `InternalServerError`. Hard errors (`BadRequestError`, generic `APIError`) skip retries and fall straight to the secondary model. Parse errors get retries too (intermittent NIM JSON-mode hiccups should be rare but recoverable).
+- **Cost log path is parameterizable** — `cost_log_path=` kwarg lets tests use `tmp_path` to avoid polluting the real log.
+
+API reliability observations (important for Session 6 planning):
+
+- **NVIDIA NIM `deepseek-v4-pro` is unreliable + slow on the free tier.** Across 8 total attempts for 5 articles, 3 transient `InternalServerError`s (retried successfully) and per-call durations spanning 23s – 855s. Mean: ~328s. The 14-minute cold-start on call 1 + the second-batch retries dominate.
+- **Implication for Session 6:** at this latency a 200-article eval pass takes ~18 hours single-threaded, and a full corpus production run is multi-day. Session 6 should plan for either parallel workers (multiprocessing on classify_article), batching if NIM supports it (the OpenAI SDK has `batch` for it), or a different endpoint. None of that needs to be solved in Session 4 — but the cost log will surface these distributions once a real corpus exists.
+- **No fallback to `minimax-m2.7` was triggered in the smoke** — primary always recovered. Fallback wiring is exercised by `test_classify_mocked_invalid_frame_value` (mocked), so it's verified at the code-path level even though the live test didn't need it.
+
+For Session 5 (after Muhanad's labels arrive):
+
+1. **Background GDELT pull status check.** Before iterating prompts, confirm `scripts/pull_all.py` is making progress — Session 5 needs at least the eval-set sample to be drawn from real cleaned data (which is Session 3's job, also blocked on the full pull).
+2. **First iteration target: address the "input too thin" failure mode.** Two of five smoke results landed in the escape valve. Once `text_snippet` is real article text (Session 3 decision), this should largely disappear — but if it doesn't, that's prompt v2's first fix.
+3. **Thinking mode A/B test.** `thinking=True` vs `False` on the eval set: does it close the precision gap on boundary cases (security↔process, democracy↔process)? Probably worth one prompt iteration.
+4. **Watch for the security/process and democracy/process confusions** — those are flagged in `codebook.md` as boundary cases. The two `[process] conf=0.10` results in the smoke may be the model defaulting to process when uncertain; prompt v2 might need a sharper "don't default to process" instruction.
+5. **Cost-log analysis tooling.** When Session 5 generates per-version eval runs, `pd.read_csv(COST_LOG_PATH)` is enough — no need for fancier infra. Group by `run_id` + `prompt_version`.
 
 ---
 
@@ -414,15 +554,17 @@ Track decisions made during execution that affect later sessions. Each entry sho
 | # | Session | Decision | Affects |
 |---|---------|----------|---------|
 | 0 | (plan) | Classifier API locked to NVIDIA NIM per README; CLAUDE.md updated 2026-05-20 to match. | 1, 4 |
+| 1 | 3 | Classification text is assembled from GKG metadata only (V2EnhancedThemes + V21AllNames + V2Tone + URL title-slug) — no live HTML scraping. Trade reliability + reproducibility for some classifier precision; document the trade-off in limitations. | 3, 5, 6 |
+| 2 | 3 | Labeling UI is an ipywidgets-based form inside `notebooks/eval_labeling.ipynb` — no Streamlit. | 3 |
 
 ## Progress Tracker
 
 | Session | Title | Status | Date | Notes |
 |---------|-------|--------|------|-------|
 | 1 | Project scaffolding & setup | Complete | 2026-05-21 | 5/5 smoke tests green; env: conda `portfolio` (3.14.4) |
-| 2 | GDELT ingestion module | Not started | | |
-| 3 | Cleaning + eval-set sampling + labeling handoff | Not started | | Triggers external dependency: Muhanad labels |
-| 4 | Classifier module + prompt v1 (parallel) | Not started | | Can run in parallel with labeling |
+| 2 | GDELT ingestion module | Complete (module) / pulls deferred | 2026-05-21 | Module + smoke + manifest green. Full pulls deferred to `scripts/pull_all.py` (user-run, background). |
+| 3 | Cleaning + eval-set sampling + labeling handoff | Complete | 2026-05-21 | 79,372 cleaned articles · 250 stratified eval candidates · 3 five-part decision blocks + labeling UI shipped. Pipeline run: 4.8h, idempotent. |
+| 4 | Classifier module + prompt v1 (parallel) | Complete | 2026-05-21 | Live smoke green on 5 articles. NIM latency 23-855s/call, 37% transient error rate; retry+fallback wiring exercised. |
 | 5 | Eval loop + prompt iteration | Not started | | Blocked on labeled eval set |
 | 6 | Confidence threshold + production run | Not started | | |
 | 7 | Analysis notebook + viz module + hero figure | Not started | | |
