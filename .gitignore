@@ -17,6 +17,7 @@ env/
 # Raw GDELT pulls (large, regenerable from manifest)
 data/raw/*
 !data/raw/.gitkeep
+!data/raw/manifest.json
 
 # Processed parquets (regenerable from pipeline; manifest tracks provenance)
 data/processed/*.parquet

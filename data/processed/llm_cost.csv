@@ -1,0 +1,9 @@
+timestamp,run_id,prompt_version,model,thinking,article_id,input_tokens,output_tokens,duration_seconds,status,fallback_used,validation_error
+2026-05-21T01:00:00.322845+00:00,session4_smoke_kenya_2022,v1,deepseek-ai/deepseek-v4-pro,False,20220809000000-0,2499,82,855.31,ok,False,
+2026-05-21T01:14:15.652646+00:00,session4_smoke_kenya_2022,v1,deepseek-ai/deepseek-v4-pro,False,20220809000000-1,2958,94,31.816,ok,False,
+2026-05-21T01:14:47.483243+00:00,session4_smoke_kenya_2022,v1,deepseek-ai/deepseek-v4-pro,False,20220809000000-2,1147,94,397.48,ok,False,
+2026-05-21T01:21:24.977181+00:00,session4_smoke_kenya_2022,v1,deepseek-ai/deepseek-v4-pro,False,20220809000000-3,0,0,0.0,transient:InternalServerError,False,
+2026-05-21T01:34:50.847464+00:00,session4_smoke_kenya_2022,v1,deepseek-ai/deepseek-v4-pro,False,20220809000000-3,0,0,0.0,transient:InternalServerError,False,
+2026-05-21T01:44:31.486064+00:00,session4_smoke_kenya_2022,v1,deepseek-ai/deepseek-v4-pro,False,20220809000000-3,1175,96,333.806,ok,False,
+2026-05-21T01:50:05.316750+00:00,session4_smoke_kenya_2022,v1,deepseek-ai/deepseek-v4-pro,False,20220809000000-4,0,0,0.0,transient:InternalServerError,False,
+2026-05-21T02:05:13.932143+00:00,session4_smoke_kenya_2022,v1,deepseek-ai/deepseek-v4-pro,False,20220809000000-4,1584,80,22.817,ok,False,
