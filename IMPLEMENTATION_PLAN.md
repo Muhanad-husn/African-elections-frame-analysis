@@ -461,14 +461,40 @@ The chosen prompt is locked. Eval P/R/F1 are known per confidence bucket. Pick t
 
 ### Completion criteria
 
-- [ ] Threshold decision block complete in five-part form
-- [ ] `articles_classified.parquet` produced
-- [ ] Cost log appended; running total visible in notebook
-- [ ] Precision floor documented BEFORE the curve was examined (note this in the rationale)
+- [x] Threshold decision block complete in five-part form (`04_pipeline_eval.ipynb` §6, executed; curve `figures/threshold_curve.png`)
+- [ ] `articles_classified.parquet` produced — **runner shipped + smoke-verified; the multi-hour run is deferred to the user** (`scripts/run_production.py`)
+- [x] Cost log + running-total cell added (`02_main.ipynb` §6 — shows eval spend + production projection now; auto-fills production cost once the run lands `prod_*` rows)
+- [x] Precision floor documented BEFORE the curve was examined (pre-registered ≥0.85 in the plan, 2026-05-20; the block confronts it with the curve)
 
 ### Handoff notes
 
-*(filled during execution)*
+**Executed 2026-05-22. Threshold decision block + production runner complete; the production API run is deferred to the user (their choice — "I'll run it later myself").**
+
+What's on disk:
+
+- `notebooks/04_pipeline_eval.ipynb` §6 — the five-part **confidence-threshold decision block** (executed, outputs committed). Computes the precision-vs-coverage curve on the v3 eval predictions, the frame-mix-skew check, and per-frame precision ungated vs gated. `figures/threshold_curve.png` committed.
+- `scripts/run_production.py` — idempotent / resumable production runner. Prompt v3 / deepseek-flash, `classify_batch` over `articles_clean.parquet`, checkpoints the output parquet after every chunk, skips already-done `GKGRECORDID`s on resume, `--elections` to stage by country, `--limit` for smoke. Writes `articles_classified.parquet` with raw labels + `pred_confidence` + an `accepted` flag. ruff clean. Validated live on a partial Nigeria-2023 run (`run_id=prod_e7cd7a1870c8`, 190 rows, all `ok`, ~$0.06 real spend) — those `prod_*` rows are **kept** in `llm_cost.csv` as genuine spend; the output parquet is gitignored so the cost log is the only committed trace. The full multi-hour run across all four elections is still deferred to the user.
+- `notebooks/02_main.ipynb` §6 — fixed the section header, replaced the threshold placeholder with a decision **summary** (full block lives in 04 §6), added a graceful **production-results** cell and a **running-cost** cell. Both execute before the production run exists (results cell prints how to produce the file; cost cell shows eval spend + projected production cost).
+
+**The threshold decision (the important call):**
+
+- Pre-registered floor was **≥ 0.85** (plan, 2026-05-20, before eval data). The curve shows it is **unreachable at usable coverage**: precision tops out at 0.833 on **5 articles** (conf ≥ 0.90). The GKG-metadata-only input (Decision Log #1) caps precision in the high-0.60s. Per the global "common sense over the contract" directive, we relaxed the floor and documented it.
+- Chosen operating point: the **0.75 confidence elbow** (precision 0.547 → 0.684; retains 53 of 119 framed eval rows).
+- **Critical finding:** the gate is **not frame-neutral** — at 0.75 the primary-frame mix shifts **+15 pp toward `democracy`, −10 pp away from `process`**. Since the headline finding *is* a frame distribution, gating the headline would bias the dependent variable.
+- **Resolution:** the threshold is stored as an **`accepted` flag, not a filter**. Production writes every row (framed + abstained) with its confidence and `accepted = framed AND conf ≥ 0.75`. This is strictly more flexible than the plan's "only rows above threshold" wording, and is **required** by Session 8's mandated threshold ±0.05 sensitivity rerun (you can't re-threshold what you've dropped).
+
+For the user — to produce the production dataset:
+
+1. `python scripts/run_production.py` from the project root. ~$23, ~9–18 h at 8–16 workers (`--max-workers 16` to halve wall-time). Resumable: safe to Ctrl-C and restart; it skips done rows. Stage with `--elections kenya_2022` (smallest, ~6 k rows, ~$2) to validate the full path cheaply before the big run, then run the rest.
+2. When it finishes, re-run `02_main.ipynb` §6 — the results + cost cells auto-populate (coverage by election, frame-mix teaser, production cost from the `prod_*` rows).
+
+**Known issue (flag for Session 9's end-to-end run):** `02_main.ipynb` is committed **unexecuted** (as it was after Session 3 — no cell outputs). Re-running it top-to-bottom currently **times out on the §3 "Ingestion status" cell** (a Session-2 cell), because that cell calls `load_cached()` over the now-full raw corpus (~30M rows across the 4 elections) just to print row counts. It was cheap when the raw cache was nearly empty; it is multi-GB / >15 min now. Options for Session 7/9: guard it behind a flag, sample/stride the load, or read counts from `pipeline_counts.csv` / `articles_clean.parquet` instead of raw. The Session-6 §6 cells themselves are validated to run standalone (results cell degrades gracefully pre-production; cost cell shows eval spend + ~$23 projection).
+
+For Session 7 (analysis + hero figure):
+
+1. `articles_classified.parquet` carries `election, outlet_origin, DATE, SourceCommonName` + `pred_frames, pred_primary, pred_confidence, pred_abstained, accepted, model_used`. Join back to `articles_clean.parquet` on `GKGRECORDID` if you need `text_snippet` / themes.
+2. **Decide all-framed vs. accepted-only for the headline.** The frame-mix skew above means the choice matters; the `accepted` column lets you do either. Recommend: headline on **all framed** labels (preserves the distribution), with `accepted`-only as a robustness lens (Session 8).
+3. Senegal's thin African side (585 rows, Session 3 handoff) still applies — the hero figure's Senegal/African bar will be small.
 
 ---
 
@@ -597,6 +623,7 @@ Track decisions made during execution that affect later sessions. Each entry sho
 | 4 | 5 | **Schema relaxed to allow abstention.** `FrameClassification.frames` may be empty (`primary_frame=None`) to mean "no frame clearly foregrounded", matching how 135/250 eval rows were hand-labeled. Loosened from Session-4 `min_length=1`; invalid-vocab still hard-fails; v1 behavior unchanged. | 5, 6 |
 | 5 | 5 | **Production classifier config = prompt `v3` + model `deepseek/deepseek-v4-flash`.** v3 (metadata-format few-shots) is best of 4 versions (micro-F1 0.552). Model A/B: deepseek beats minimax-m2.7 on accuracy, latency, and reliability — minimax stays fallback-only. | 6, 7 |
 | 6 | 5 | **Taxonomy: 6 frames for the headline analysis; `democracy+process→governance` 5-frame collapse carried as the Session-8 robustness alternative.** Democracy↔process is the dominant seam (merge lifts micro-F1 0.552→0.598) but is the substantive distinction the research question targets, so it is stress-tested, not assumed away. | 7, 8 |
+| 7 | 6 | **Confidence threshold = 0.75, stored as an `accepted` flag, NOT a filter.** Pre-registered ≥0.85 floor is unreachable (metadata-only input caps precision in the high-0.60s; ≥0.85 survives on 5/250 eval rows), so it was relaxed to the 0.75 precision elbow and documented. Crucially, gating at 0.75 is **not frame-neutral** (+15pp democracy / −10pp process), so `articles_classified.parquet` keeps **all** rows + `pred_confidence` + `accepted = framed AND conf≥0.75`. Headline all-framed-vs-accepted is a Session-7 choice; Session-8's ±0.05 sensitivity requires the un-dropped rows. Supersedes the Session-6 plan wording "only rows above threshold". | 7, 8 |
 
 ## Progress Tracker
 
@@ -607,7 +634,7 @@ Track decisions made during execution that affect later sessions. Each entry sho
 | 3 | Cleaning + eval-set sampling + labeling handoff | Complete | 2026-05-21 | 79,372 cleaned articles · 250 stratified eval candidates · 3 five-part decision blocks + labeling UI shipped. Pipeline run: 4.8h, idempotent. |
 | 4 | Classifier module + prompt v1 (parallel) | Complete | 2026-05-21 | Live smoke green on 5 articles. NIM latency 23-855s/call, 37% transient error rate; retry+fallback wiring exercised. |
 | 5 | Eval loop + prompt iteration | Complete | 2026-05-22 | 4 prompt versions (v1→v4); v3 selected (micro-F1 0.552). Model A/B: deepseek > minimax. Taxonomy: 6 frames. eval.py + tests; notebook executed. 26 tests green. |
-| 6 | Confidence threshold + production run | In progress | 2026-05-22 | |
+| 6 | Confidence threshold + production run | Complete (deliverables) / prod run deferred | 2026-05-22 | Threshold block (04 §6) + curve figure + `run_production.py` (smoke-verified) + cost cell (02 §6). Threshold 0.75 stored as `accepted` flag, not filter (gate not frame-neutral). ~$23/~9-18h API run deferred to user. |
 | 7 | Analysis notebook + viz module + hero figure | Not started | | |
 | 8 | Robustness notebook | Not started | | |
 | 9 | README polish + decisions table + final verification | Not started | | |
