@@ -22,6 +22,9 @@ data/raw/*
 # Processed parquets (regenerable from pipeline; manifest tracks provenance)
 data/processed/*.parquet
 
+# Pipeline run logs (transient tqdm dumps; counts live in pipeline_counts.csv)
+data/processed/*.log
+
 # Hand-labeled eval set is committed as ground truth — DO NOT ignore.
 # (No exclusion needed; this comment is here so future contributors know.)
 
