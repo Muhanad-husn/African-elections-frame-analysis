@@ -388,15 +388,50 @@ For Session 5 (after Muhanad's labels arrive):
 
 ### Completion criteria
 
-- [ ] At least 2 prompt iterations (more if eval scores demand)
-- [ ] Per-version eval table committed in notebook
-- [ ] Final prompt version selected and tagged
-- [ ] Frame taxonomy granularity decision block complete (in `02_main.ipynb` or `04_pipeline_eval.ipynb`)
-- [ ] Qualitative error analysis written (which frame pairs confuse the model and why)
+- [x] At least 2 prompt iterations (4 versions: v1→v2→v3→v4)
+- [x] Per-version eval table committed in notebook (`04_pipeline_eval.ipynb` §2)
+- [x] Final prompt version selected and tagged (**v3** on `deepseek-v4-flash`)
+- [x] Frame taxonomy granularity decision block complete (`04_pipeline_eval.ipynb`, five-part)
+- [x] Qualitative error analysis written (§4 — false-abstain + democracy↔process seam)
 
 ### Handoff notes
 
-*(filled during execution — note the chosen final prompt version and the precision floor that should drive Session 6's threshold pick)*
+**Executed 2026-05-22. Eval loop + 4 prompt versions + model A/B complete. Production config: prompt v3 on `deepseek-v4-flash`.**
+
+What's on disk:
+
+- `src/elections_frames/eval.py` (~210 lines) — scoring module (kept in `src/`, it's reusable + unit-tested). Public surface: `to_frame_set`, `per_frame_scores(gold, pred, frames=FRAMES)`, `run_summary`, `confusion_matrix_primary`, `compare_versions`, `exact_match_ratio`. Multi-label-with-abstention metric: per-frame binary P/R/F1 over the 6 frames (n=250; empty gold = all-negatives), explicit **abstain** P/R, single-label confusion (6 frames + `none`). `per_frame_scores` takes a `frames=` arg so merged taxonomies are scored honestly (raises if a label would be dropped).
+- `tests/test_eval.py` — 7 tests; `tests/test_classify_smoke.py` — +2 (abstain schema). **26 offline tests green, 2 live skipped. ruff clean.**
+- `src/elections_frames/classify.py` — `FrameClassification` schema **relaxed to allow abstention**: `frames` may be empty, `primary_frame` may be `None`; a `model_validator` reconciles them (lenient, non-raising) and adds an `.abstained` property. Invalid-vocab values still hard-fail. v1's behavior unchanged.
+- `src/elections_frames/prompts/v2.py`, `v3.py`, `v4.py` — each a single isolated change with a docstring stating what it fixed.
+- `scripts/run_eval.py` — reusable runner: `python scripts/run_eval.py <version> [--model …] [--limit N] [--thinking]`. Never writes `eval_set.parquet`. Tags outputs with a model slug for non-default models.
+- `data/processed/eval_results_v{1,2,3,4}.parquet` (deepseek) + `eval_results_v{3,4}_minimax-m2-7.parquet` (model A/B). Each has gold + pred frames/primary/confidence/rationale.
+- `notebooks/04_pipeline_eval.ipynb` — fully written + executed (26 cells, outputs committed): class-imbalance diagnostic, per-version table, model A/B, confusion matrices, qualitative error analysis, taxonomy-granularity five-part decision block, final selection + handoff.
+- `figures/eval_confusion_v1_v3.png` — committed.
+
+**The prompt-iteration narrative (deepseek-v4-flash, micro-F1):**
+
+| Version | Single change | micro-F1 | macro-F1 | abstain-F1 |
+|---|---|---:|---:|---:|
+| v1 | initial; cannot abstain (rule: thin → `["process"]`) | 0.441 | 0.413 | 0.00 |
+| v2 | **enable + instruct abstention** (empty frames OK) | 0.523 | 0.524 | 0.768 |
+| **v3** ✅ | few-shot examples rewritten in **GKG-metadata format** | **0.552** | 0.519 | 0.737 |
+| v4 | democracy↔process disambiguation rule | 0.522 | 0.515 | 0.740 |
+
+v1→v3 is monotone; **v4 regressed** (the dem↔proc rule just trades errors across the seam) — kept as the probe showing the seam is taxonomy-inherent. **v3 selected.**
+
+**Key findings for downstream sessions:**
+
+1. **54% of eval rows (135/250) carry no frame.** Muhanad, labeling blind, judged most GKG-metadata-only snippets too thin to foreground a frame. This caps achievable F1 — the ceiling is the input (metadata-only, Decision Log #1), not the prompt. Restate in `02_main.ipynb` §Limitations + README.
+2. **Model A/B: the cheaper `deepseek-v4-flash` beats `minimax-m2.7` on every axis** — accuracy (v3: 0.552 vs 0.460; v4: 0.522 vs 0.474), latency (~6.5 s vs ~13 s/call median), and reliability (≈4–5 vs ≈22–28 transient errors per 250-row pass). The bigger model over-frames thin metadata (lower precision). **Production stays on deepseek-flash.**
+3. **Taxonomy: keep 6 frames for the headline.** The democracy↔process seam is the dominant residual confusion (merging it lifts micro-F1 0.552→0.598), but collapsing it would delete the procedural-vs-institutional distinction the research question is about. The 5-frame `democracy+process→governance` collapse is carried as the **Session 8 robustness alternative**.
+
+For Session 6 (confidence threshold + production run):
+
+1. **Production config is locked: prompt `v3`, model `deepseek/deepseek-v4-flash`.** Run on `data/processed/articles_clean.parquet` (79,372 rows) via `classify_batch`.
+2. **Threshold on the curve, not by eye.** Use the v3 eval predictions' `pred_confidence` vs gold. Among **framed** v3 predictions (n=119) confidence mean ≈0.724. Recommend applying the threshold to *framed* predictions only (abstentions pass through as "no frame"); document a precision floor *before* viewing the curve.
+3. **Cost-log hygiene:** re-running a version reuses its fixed `run_id` and appends, so `llm_cost.csv` can hold duplicate ok-rows (eval_v4 has some). Dedup by `(run_id, article_id)` for cost accounting, OR give the production run a unique `run_id` (`classify_batch` does this when `run_id=None`). The eval notebook already dedups for display.
+4. **`thinking=True` A/B was not run** (Session 4 flagged it as optional). Deferred — v3/deepseek already clears the practical bar; revisit only if Session 6 wants more precision headroom.
 
 ---
 
@@ -559,6 +594,9 @@ Track decisions made during execution that affect later sessions. Each entry sho
 | 1 | 3 | Classification text is assembled from GKG metadata only (V2EnhancedThemes + V21AllNames + V2Tone + URL title-slug) — no live HTML scraping. Trade reliability + reproducibility for some classifier precision; document the trade-off in limitations. | 3, 5, 6 |
 | 2 | 3 | Labeling UI is an ipywidgets-based form inside `notebooks/eval_labeling.ipynb` — no Streamlit. | 3 |
 | 3 | (pre-5/6, 2026-05-22) | **Classifier provider switched NVIDIA NIM → OpenRouter** (`deepseek/deepseek-v4-flash` primary, `minimax/minimax-m2.7` fallback, base_url `https://openrouter.ai/api/v1`, key `[OPENROUTER] OPENROUTER_API_KEY`). Driver: Session 4's free-tier NIM latency (23–855 s/call, ~37% transient errors → ~20 h single-threaded eval pass) made prompt iteration the project bottleneck. Verified OpenRouter round-trip ~4.5 s/call. NIM kept switchable-but-inactive (`provider="nvidia"`). Live test gate renamed `NVIDIA_LIVE` → `OPENROUTER_LIVE`. Also added `classify_batch` — a thread-pooled fan-out over `classify_article` (input-order results, per-item failures captured not fatal, lock-serialized cost-log appends; live-verified ~fully parallel across workers). Together these resolve **both** the "different endpoint" and "parallel workers" options flagged in Session 4. | 5, 6 |
+| 4 | 5 | **Schema relaxed to allow abstention.** `FrameClassification.frames` may be empty (`primary_frame=None`) to mean "no frame clearly foregrounded", matching how 135/250 eval rows were hand-labeled. Loosened from Session-4 `min_length=1`; invalid-vocab still hard-fails; v1 behavior unchanged. | 5, 6 |
+| 5 | 5 | **Production classifier config = prompt `v3` + model `deepseek/deepseek-v4-flash`.** v3 (metadata-format few-shots) is best of 4 versions (micro-F1 0.552). Model A/B: deepseek beats minimax-m2.7 on accuracy, latency, and reliability — minimax stays fallback-only. | 6, 7 |
+| 6 | 5 | **Taxonomy: 6 frames for the headline analysis; `democracy+process→governance` 5-frame collapse carried as the Session-8 robustness alternative.** Democracy↔process is the dominant seam (merge lifts micro-F1 0.552→0.598) but is the substantive distinction the research question targets, so it is stress-tested, not assumed away. | 7, 8 |
 
 ## Progress Tracker
 
@@ -568,8 +606,8 @@ Track decisions made during execution that affect later sessions. Each entry sho
 | 2 | GDELT ingestion module | Complete (module) / pulls deferred | 2026-05-21 | Module + smoke + manifest green. Full pulls deferred to `scripts/pull_all.py` (user-run, background). |
 | 3 | Cleaning + eval-set sampling + labeling handoff | Complete | 2026-05-21 | 79,372 cleaned articles · 250 stratified eval candidates · 3 five-part decision blocks + labeling UI shipped. Pipeline run: 4.8h, idempotent. |
 | 4 | Classifier module + prompt v1 (parallel) | Complete | 2026-05-21 | Live smoke green on 5 articles. NIM latency 23-855s/call, 37% transient error rate; retry+fallback wiring exercised. |
-| 5 | Eval loop + prompt iteration | Not started | | Blocked on labeled eval set |
-| 6 | Confidence threshold + production run | Not started | | |
+| 5 | Eval loop + prompt iteration | Complete | 2026-05-22 | 4 prompt versions (v1→v4); v3 selected (micro-F1 0.552). Model A/B: deepseek > minimax. Taxonomy: 6 frames. eval.py + tests; notebook executed. 26 tests green. |
+| 6 | Confidence threshold + production run | In progress | 2026-05-22 | |
 | 7 | Analysis notebook + viz module + hero figure | Not started | | |
 | 8 | Robustness notebook | Not started | | |
 | 9 | README polish + decisions table + final verification | Not started | | |

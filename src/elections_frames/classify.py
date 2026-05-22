@@ -56,7 +56,7 @@ from openai import (
     OpenAI,
     RateLimitError,
 )
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from elections_frames import prompts
 from elections_frames.data import PROCESSED_DIR, ROOT
@@ -162,12 +162,46 @@ FRAME_VALUES: tuple[str, ...] = (
 
 
 class FrameClassification(BaseModel):
-    """Structured classifier output. Validated against parsed model JSON."""
+    """Structured classifier output. Validated against parsed model JSON.
 
-    frames: list[Frame] = Field(min_length=1, max_length=6)
-    primary_frame: Frame
+    Abstention (Session 5): ``frames`` may be **empty** to mean "no frame is
+    clearly foregrounded" — this matches how the eval set was hand-labeled
+    (135/250 rows carry an empty label because the GKG-metadata-only snippet
+    is too thin to foreground a frame). When ``frames`` is empty,
+    ``primary_frame`` is ``None``. The constraint was loosened from the
+    Session-4 ``min_length=1`` so the classifier can express that abstention;
+    prompt ``v1`` never abstains (its instruction defaults thin inputs to
+    ``["process"]``), so v1's behavior is unchanged. Out-of-vocabulary frame
+    values are still a hard validation error.
+    """
+
+    frames: list[Frame] = Field(default_factory=list, max_length=6)
+    primary_frame: Frame | None = None
     confidence: float = Field(ge=0.0, le=1.0)
     rationale: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _reconcile_primary(self) -> FrameClassification:
+        """Keep ``primary_frame`` consistent with ``frames`` (lenient, non-raising).
+
+        Normalizes rather than rejects so a well-formed-but-slightly-inconsistent
+        model response still scores rather than burning a retry+fallback:
+        - empty ``frames`` -> abstain, force ``primary_frame=None``;
+        - non-empty ``frames`` with no primary -> take the first as primary;
+        - a primary not listed in ``frames`` -> fold it into ``frames`` (front).
+        """
+        if not self.frames:
+            self.primary_frame = None
+        elif self.primary_frame is None:
+            self.primary_frame = self.frames[0]
+        elif self.primary_frame not in self.frames:
+            self.frames = [self.primary_frame, *self.frames]
+        return self
+
+    @property
+    def abstained(self) -> bool:
+        """True when the model foregrounded no frame (empty ``frames``)."""
+        return not self.frames
 
 
 @dataclass

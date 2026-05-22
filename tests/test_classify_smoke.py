@@ -167,6 +167,38 @@ def test_classify_batch_mocked_survives_item_failures(tmp_path):
     assert rows and all(r["status"] == "parse_error" for r in rows)
 
 
+def test_schema_allows_abstention(tmp_path):
+    """Empty frames means abstain — primary is forced to None, no validation error."""
+    from elections_frames.classify import FrameClassification, classify_article
+
+    abstain = FrameClassification(
+        frames=[], primary_frame=None, confidence=0.2, rationale="too thin to frame"
+    )
+    assert abstain.abstained is True
+    assert abstain.primary_frame is None
+
+    # Round-trip through the classifier with a model that abstains.
+    canned = json.dumps(
+        {"frames": [], "primary_frame": None, "confidence": 0.2, "rationale": "too thin"}
+    )
+    result = classify_article(
+        text="thin", client=_FakeClient(canned), cost_log_path=tmp_path / "c.csv"
+    )
+    assert result.classification.abstained is True
+
+
+def test_schema_reconciles_primary_not_in_frames():
+    """A primary not listed in frames is folded in rather than rejected."""
+    from elections_frames.classify import FrameClassification
+
+    fc = FrameClassification(
+        frames=["process"], primary_frame="security", confidence=0.8, rationale="x"
+    )
+    assert fc.primary_frame == "security"
+    assert "security" in fc.frames  # folded to front
+    assert fc.frames[0] == "security"
+
+
 def test_prompt_v1_messages_have_codebook_and_examples():
     """Sanity: the v1 prompt embeds the codebook and at least 2 few-shot examples."""
     from elections_frames import prompts
