@@ -4,9 +4,9 @@ Two layers:
 
 1. **Mocked** — runs offline; injects a fake OpenAI client that returns
    canned JSON. Verifies parsing, schema validation, and cost-log writes.
-2. **Live** — gated behind ``NVIDIA_LIVE=1``; hits the real NVIDIA NIM
-   endpoint with ~5 records from the Kenya 2022 smoke pull and asserts the
-   round-trip yields valid ``FrameClassification`` objects.
+2. **Live** — gated behind ``OPENROUTER_LIVE=1``; hits the real active-provider
+   endpoint (OpenRouter by default) with ~5 records from the Kenya 2022 smoke
+   pull and asserts the round-trip yields valid ``FrameClassification`` objects.
 """
 
 from __future__ import annotations
@@ -106,6 +106,67 @@ def test_classify_mocked_invalid_frame_value(tmp_path):
     assert any("vibes" in r["validation_error"] for r in rows)
 
 
+def test_classify_batch_mocked_preserves_order_and_logs(tmp_path):
+    """classify_batch fans out, preserves input order, and logs one row per item."""
+    from elections_frames.classify import classify_batch
+
+    canned = json.dumps(
+        {
+            "frames": ["security"],
+            "primary_frame": "security",
+            "confidence": 0.9,
+            "rationale": "stand-in",
+        }
+    )
+    client = _FakeClient(canned)
+    log = tmp_path / "llm_cost.csv"
+
+    items = [(f"art_{i}", f"text {i}") for i in range(12)]
+    results = classify_batch(
+        items,
+        client=client,
+        cost_log_path=log,
+        max_workers=4,
+        progress=False,
+    )
+
+    assert [r.article_id for r in results] == [aid for aid, _ in items]  # input order
+    assert all(r.ok for r in results)
+    assert all(r.result.classification.primary_frame == "security" for r in results)
+
+    rows = list(csv.DictReader(log.open(encoding="utf-8")))
+    assert len(rows) == 12  # one ok row per item — no interleaving/corruption
+    assert {r["run_id"] for r in rows} == {rows[0]["run_id"]}  # one shared run_id
+    assert all(r["status"] == "ok" for r in rows)
+
+
+def test_classify_batch_mocked_survives_item_failures(tmp_path):
+    """A hard per-item failure is captured in BatchResult.error, not raised."""
+    from elections_frames.classify import classify_batch
+
+    bad = json.dumps(
+        {"frames": ["nope"], "primary_frame": "nope", "confidence": 0.1, "rationale": "x"}
+    )
+    client = _FakeClient(bad)
+    log = tmp_path / "llm_cost.csv"
+
+    items = [(f"art_{i}", f"text {i}") for i in range(5)]
+    results = classify_batch(
+        items,
+        client=client,
+        cost_log_path=log,
+        max_workers=3,
+        max_retries=0,
+        progress=False,
+    )
+
+    assert len(results) == 5
+    assert all(not r.ok for r in results)
+    assert all(r.error is not None for r in results)
+    rows = list(csv.DictReader(log.open(encoding="utf-8")))
+    assert rows and all(r["status"] == "parse_error" for r in rows)
+
+
 def test_prompt_v1_messages_have_codebook_and_examples():
     """Sanity: the v1 prompt embeds the codebook and at least 2 few-shot examples."""
     from elections_frames import prompts
@@ -125,15 +186,16 @@ def test_prompt_v1_messages_have_codebook_and_examples():
 
 # --- Live --------------------------------------------------------------------
 @pytest.mark.skipif(
-    not os.getenv("NVIDIA_LIVE"),
-    reason="Set NVIDIA_LIVE=1 to enable the live NVIDIA NIM round-trip smoke test.",
+    not os.getenv("OPENROUTER_LIVE"),
+    reason="Set OPENROUTER_LIVE=1 to enable the live active-provider round-trip smoke test.",
 )
 def test_classify_live_smoke():
     """Live: classify 5 GKG records from the Kenya 2022 smoke pull.
 
-    Uses GKG metadata strings (themes + entities + URL) as the classifier input —
-    this is a Session-4 smoke stand-in, not a commitment to the production
-    text_snippet definition (that's Session 3's decision).
+    Hits the active provider (OpenRouter by default). Uses GKG metadata strings
+    (themes + entities + URL) as the classifier input — this is a Session-4 smoke
+    stand-in, not a commitment to the production text_snippet definition (that's
+    Session 3's decision).
     """
     from elections_frames.classify import FrameClassification, classify_article
     from elections_frames.data import load_cached

@@ -11,7 +11,9 @@ End-to-end build of a four-stage pipeline (ingest → clean → classify → eva
 
 ## API choice (resolved)
 
-The classifier uses **NVIDIA NIM** (`deepseek-ai/deepseek-v4-pro` primary, `minimaxai/minimax-m2.7` hard-failure fallback) via the OpenAI-compatible client at `https://integrate.api.nvidia.com/v1`. API key lives in `../secrets.toml` under `[NVIDIA] API_KEY`. Call shape reference: `../NVIDIA_API_request_sample.py`. The `CLAUDE.md` reference to "Anthropic API" was stale and has been updated to match.
+The classifier uses **OpenRouter** (`deepseek/deepseek-v4-flash` primary, `minimax/minimax-m2.7` hard-failure fallback) via the OpenAI-compatible client at `https://openrouter.ai/api/v1`. API key lives in `../secrets.toml` under `[OPENROUTER] OPENROUTER_API_KEY`.
+
+> **Migration (2026-05-22, pre-Session-5/6).** Originally the classifier targeted **NVIDIA NIM** (`deepseek-ai/deepseek-v4-pro` / `minimaxai/minimax-m2.7`). Session 4's smoke exposed free-tier latency of 23–855 s/call (mean ~328 s) and a ~37% transient-error rate — a single-threaded 250-row eval pass would run ~20 h, making prompt iteration (3–5 versions × 250 calls) the project's wall-clock bottleneck. Switched the active provider to OpenRouter Flash (verified round-trip ~4.5 s/call); a single verification call parsed cleanly. NVIDIA is retained as a **switchable but inactive** provider in `classify.py` (`provider="nvidia"`) for an easy revert. This resolves the "different endpoint" option flagged in Session 4's reliability notes below.
 
 ## Session Dependency Graph
 
@@ -556,6 +558,7 @@ Track decisions made during execution that affect later sessions. Each entry sho
 | 0 | (plan) | Classifier API locked to NVIDIA NIM per README; CLAUDE.md updated 2026-05-20 to match. | 1, 4 |
 | 1 | 3 | Classification text is assembled from GKG metadata only (V2EnhancedThemes + V21AllNames + V2Tone + URL title-slug) — no live HTML scraping. Trade reliability + reproducibility for some classifier precision; document the trade-off in limitations. | 3, 5, 6 |
 | 2 | 3 | Labeling UI is an ipywidgets-based form inside `notebooks/eval_labeling.ipynb` — no Streamlit. | 3 |
+| 3 | (pre-5/6, 2026-05-22) | **Classifier provider switched NVIDIA NIM → OpenRouter** (`deepseek/deepseek-v4-flash` primary, `minimax/minimax-m2.7` fallback, base_url `https://openrouter.ai/api/v1`, key `[OPENROUTER] OPENROUTER_API_KEY`). Driver: Session 4's free-tier NIM latency (23–855 s/call, ~37% transient errors → ~20 h single-threaded eval pass) made prompt iteration the project bottleneck. Verified OpenRouter round-trip ~4.5 s/call. NIM kept switchable-but-inactive (`provider="nvidia"`). Live test gate renamed `NVIDIA_LIVE` → `OPENROUTER_LIVE`. Also added `classify_batch` — a thread-pooled fan-out over `classify_article` (input-order results, per-item failures captured not fatal, lock-serialized cost-log appends; live-verified ~fully parallel across workers). Together these resolve **both** the "different endpoint" and "parallel workers" options flagged in Session 4. | 5, 6 |
 
 ## Progress Tracker
 

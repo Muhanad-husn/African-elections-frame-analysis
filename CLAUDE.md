@@ -81,7 +81,7 @@ There is a creative tension between #2 (AI Developer Mindset, "avoid over-engine
 
 ## Planned method (one paragraph)
 
-A four-stage pipeline: (1) **ingestion** of GDELT GKG records for ±30 days around each election; (2) **cleaning** — English-relevance filter, deduplication, outlet-origin attribution; (3) **classification** via the NVIDIA NIM API (`deepseek-ai/deepseek-v4-pro` primary, `minimaxai/minimax-m2.7` hard-failure fallback; OpenAI-compatible client at `https://integrate.api.nvidia.com/v1`; key in `../secrets.toml` under `[NVIDIA] API_KEY`) with a structured-output prompt over a 6-frame taxonomy (security / economy / democracy / identity / process / corruption); (4) **evaluation** against a hand-labeled set of 200–300 stratified articles, producing per-frame precision/recall/F1 and a confusion matrix. The production run is only treated as analytically usable once eval scores clear a documented bar. Cost is logged per run. Analysis compares frame distributions by outlet origin, by election, and over time around vote day.
+A four-stage pipeline: (1) **ingestion** of GDELT GKG records for ±30 days around each election; (2) **cleaning** — English-relevance filter, deduplication, outlet-origin attribution; (3) **classification** via the OpenRouter API (`deepseek/deepseek-v4-flash` primary, `minimax/minimax-m2.7` hard-failure fallback; OpenAI-compatible client at `https://openrouter.ai/api/v1`; key in `../secrets.toml` under `[OPENROUTER] OPENROUTER_API_KEY`) with a structured-output prompt over a 6-frame taxonomy (security / economy / democracy / identity / process / corruption); (4) **evaluation** against a hand-labeled set of 200–300 stratified articles, producing per-frame precision/recall/F1 and a confusion matrix. The production run is only treated as analytically usable once eval scores clear a documented bar. Cost is logged per run. Analysis compares frame distributions by outlet origin, by election, and over time around vote day.
 
 ## Visual style
 
@@ -94,7 +94,7 @@ A four-stage pipeline: (1) **ingestion** of GDELT GKG records for ±30 days arou
 - [ ] **Structured analytic dataset**: parquet with `article_id, date, outlet, outlet_origin, election, themes, text_snippet`
 - [ ] **Frame taxonomy**: security / economy / democracy / identity / process / corruption (codebook documented)
 - [ ] **Hand-labeled eval set**: 200–300 articles, stratified by election and outlet origin — **labeled by Muhanad, not by Claude**
-- [ ] **LLM-as-classifier**: prompt + structured output (NVIDIA NIM API — `deepseek-v4-pro` primary, `minimax-m2.7` fallback), with cost logged
+- [ ] **LLM-as-classifier**: prompt + structured output (OpenRouter API — `deepseek-v4-flash` primary, `minimax-m2.7` fallback; NVIDIA NIM switchable but inactive), with cost logged
 - [ ] **Eval report**: precision/recall/F1 per frame, confusion matrix, qualitative error analysis
 - [ ] **Analysis notebook**: frame distribution by outlet origin, by election, over time around vote day
 - [ ] **Hero figure**: stacked bar of frame mix, African vs. international press, per election
@@ -125,7 +125,7 @@ Each one gets a five-part block inline in `notebooks/02_main.ipynb` (or `noteboo
 - `notebooks/NOTEBOOK_STRUCTURE.md` — copy of the decision-discipline pattern (carry over from `_template/`)
 - `src/elections_frames/data.py` — GDELT ingestion + caching + outlet provenance join
 - `src/elections_frames/cleaning.py` — relevance filter + deduplication
-- `src/elections_frames/classify.py` — NVIDIA NIM API wrapper (OpenAI-compatible client; `deepseek-v4-pro` primary, `minimax-m2.7` hard-failure fallback) with structured output + cost logging
+- `src/elections_frames/classify.py` — OpenRouter API wrapper (OpenAI-compatible client; `deepseek-v4-flash` primary, `minimax-m2.7` hard-failure fallback; NVIDIA NIM retained as switchable but inactive provider) with structured output + cost logging
 - `src/elections_frames/viz.py` — stacked-bar and confusion-matrix helpers (matplotlib + seaborn)
 - `src/elections_frames/diagnostics.py` — diagnostic helpers used inside notebook decision blocks
 - `data/external/outlets.csv` — hand-curated outlet provenance (African / International + edge cases)
@@ -150,12 +150,12 @@ Concretely, this means:
 - Claude must **never** populate the `frame_labels` column of `data/external/eval_set.parquet` programmatically with model output. That column is hand-entered by Muhanad.
 - If a session is tempted to "just bootstrap the eval set with LLM labels and Muhanad will fix them later" — do not. Anchoring bias is real; pre-populated labels skew human review. Muhanad labels blind.
 
-If you find yourself about to write code that calls the NVIDIA NIM API (or any LLM) and writes to `eval_set.parquet`, stop and re-read this section.
+If you find yourself about to write code that calls the classifier API (OpenRouter, NVIDIA, or any LLM) and writes to `eval_set.parquet`, stop and re-read this section.
 
 ### Other workflow notes
 
 - GDELT raw archives are large; pull only the ±30-day windows needed and cache aggressively. Commit a manifest of pulled file IDs to the repo.
-- The NVIDIA NIM API classification step has a real dollar cost — log every run's input/output tokens to `data/processed/llm_cost.csv` and surface a running cost total in the notebook. Cost is a first-class success metric per Principle 2.
+- The OpenRouter API classification step has a real dollar cost — log every run's input/output tokens to `data/processed/llm_cost.csv` and surface a running cost total in the notebook. Cost is a first-class success metric per Principle 2. OpenRouter Flash rates (as of the migration): $0.112 / 1M input tokens, $0.224 / 1M output tokens.
 - Prompt iteration: keep every prompt version in `src/elections_frames/prompts/` with a version number. The eval notebook reads them all and produces a per-version score table. The narrative of "v3 fixed the security/identity confusion; v4 fixed the security/process confusion" is itself the methodological contribution.
 - Frame taxonomy decisions should happen *after* labeling a first batch of ~50 articles. Boundary cases observed during labeling are the diagnostic that informs whether 5, 6, or 7 frames is right.
 - Hero figure constraint: stacked bar of frame mix (African vs. International, per election) must read well at LinkedIn-post thumbnail size (800×800). Test the rendering before declaring it done.

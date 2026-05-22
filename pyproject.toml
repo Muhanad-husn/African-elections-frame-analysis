@@ -35,8 +35,9 @@ nlp = [
     "scikit-learn>=1.4",
 ]
 llm = [
-    # NVIDIA NIM is OpenAI-compatible (see ../NVIDIA_API_request_sample.py).
-    # API key resolved from ../secrets.toml under [NVIDIA] API_KEY.
+    # Classifier providers are OpenAI-compatible. Active: OpenRouter
+    # (base_url https://openrouter.ai/api/v1), key from ../secrets.toml under
+    # [OPENROUTER] OPENROUTER_API_KEY. NVIDIA NIM is switchable but inactive.
     # tomllib is stdlib (Python 3.11+) — no extra dep needed for secrets read.
     "openai>=1.0",
 ]

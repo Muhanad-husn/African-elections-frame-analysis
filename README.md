@@ -22,7 +22,7 @@ Access date: planned 2026-05-XX (to be filled when ingestion notebook is first r
 
 ## Method
 
-A four-stage pipeline. **(1) Ingestion** pulls GDELT GKG records for the ±30-day window around each of the four elections. **(2) Cleaning** filters to election-relevant English-language articles, deduplicates, and attributes each outlet to "African" or "International" using a hand-curated provenance list. **(3) Classification** uses the NVIDIA NIM API (`deepseek-ai/deepseek-v4-pro` primary, `minimaxai/minimax-m2.7` hard-failure fallback) with a structured-output prompt to assign one or more frames per article from a 6-frame taxonomy (security / economy / democracy / identity / process / corruption). **(4) Evaluation** compares LLM labels against a hand-labeled set of 200–300 stratified articles, computing precision/recall/F1 per frame and a confusion matrix. Only after the eval passes a documented quality bar do we treat the production-run labels as analytically usable. The strongest critique of this design is that the frame taxonomy is itself a choice — different taxonomies would yield different distributions. The taxonomy is documented in a codebook (`data/external/codebook.md`) and its granularity is one of the documented decisions below.
+A four-stage pipeline. **(1) Ingestion** pulls GDELT GKG records for the ±30-day window around each of the four elections. **(2) Cleaning** filters to election-relevant English-language articles, deduplicates, and attributes each outlet to "African" or "International" using a hand-curated provenance list. **(3) Classification** uses the OpenRouter API (`deepseek/deepseek-v4-flash` primary, `minimax/minimax-m2.7` hard-failure fallback) with a structured-output prompt to assign one or more frames per article from a 6-frame taxonomy (security / economy / democracy / identity / process / corruption). **(4) Evaluation** compares LLM labels against a hand-labeled set of 200–300 stratified articles, computing precision/recall/F1 per frame and a confusion matrix. Only after the eval passes a documented quality bar do we treat the production-run labels as analytically usable. The strongest critique of this design is that the frame taxonomy is itself a choice — different taxonomies would yield different distributions. The taxonomy is documented in a codebook (`data/external/codebook.md`) and its granularity is one of the documented decisions below.
 
 ## Methodological decisions
 
@@ -61,9 +61,10 @@ cd 05-african-elections-frames
 # Install with the NLP + LLM + viz extras
 pip install -e ".[viz,nlp,llm]"
 
-# NVIDIA API key is read from ../secrets.toml under [NVIDIA] API_KEY
-# (see ../NVIDIA_API_request_sample.py for the call shape — OpenAI-compatible client,
-#  base_url https://integrate.api.nvidia.com/v1)
+# OpenRouter API key is read from ../secrets.toml under [OPENROUTER] OPENROUTER_API_KEY
+# (OpenAI-compatible client, base_url https://openrouter.ai/api/v1).
+# NVIDIA NIM is retained as a switchable provider (provider="nvidia") but inactive
+# by default — see classify.py for why (free-tier latency/error rate).
 
 # Run the pipeline notebooks in order
 jupyter lab notebooks/02_main.ipynb
@@ -78,7 +79,7 @@ Full run time: ~X minutes for cached data; classification step depends on the nu
 - `notebooks/04_pipeline_eval.ipynb` — precision/recall/F1 per frame, confusion matrix, prompt-iteration history, qualitative error analysis
 - `src/elections_frames/data.py` — GDELT ingestion + caching + outlet provenance join
 - `src/elections_frames/cleaning.py` — relevance filter + deduplication
-- `src/elections_frames/classify.py` — NVIDIA NIM API wrapper (`deepseek-v4-pro` primary, `minimax-m2.7` hard-failure fallback) with structured output + cost logging
+- `src/elections_frames/classify.py` — OpenRouter API wrapper (`deepseek-v4-flash` primary, `minimax-m2.7` hard-failure fallback; NVIDIA NIM switchable but inactive) with structured output + cost logging
 - `src/elections_frames/viz.py` — stacked-bar and confusion-matrix helpers (matplotlib + seaborn)
 - `src/elections_frames/diagnostics.py` — diagnostic helpers used in decision blocks
 - `data/external/outlets.csv` — hand-curated outlet provenance (African / International)
