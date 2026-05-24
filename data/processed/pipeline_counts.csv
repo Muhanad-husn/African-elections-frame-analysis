@@ -1,0 +1,5 @@
+election,method,dedup_threshold,n_raw,n_after_relevant,n_after_english,n_after_dedup,elapsed_sec,run_at
+nigeria_2023,hybrid,0.8,6621830,40776,40223,29724,4124.8,2026-05-21T18:12:00+00:00
+kenya_2022,hybrid,0.8,6587750,10147,9955,6119,3530.1,2026-05-21T19:10:50+00:00
+senegal_2024,hybrid,0.8,8875777,4400,4320,3820,4415.6,2026-05-21T20:24:26+00:00
+south_africa_2024,hybrid,0.8,8604730,44043,43740,39709,5233.6,2026-05-21T21:51:39+00:00

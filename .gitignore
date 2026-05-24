@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Local caches
+.cache/
+.ipynb_checkpoints/
+
+# Raw GDELT pulls (large, regenerable from manifest)
+data/raw/*
+!data/raw/.gitkeep
+!data/raw/manifest.json
+
+# Processed parquets (regenerable from pipeline; manifest tracks provenance)
+data/processed/*.parquet
+
+# Pipeline run logs (transient tqdm dumps; counts live in pipeline_counts.csv)
+data/processed/*.log
+
+# Hand-labeled eval set is committed as ground truth — DO NOT ignore.
+# (No exclusion needed; this comment is here so future contributors know.)
+
+# Scratch notebooks
+notebooks/_scratch/*
+!notebooks/_scratch/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets (this project reads ../secrets.toml from the monorepo parent)
+secrets.toml
+.env
+
+# AI assistant / authoring artifacts (kept locally, not tracked)
+.claude/
+CLAUDE.md
+CLAUDE.local.md
+IMPLEMENTATION_PLAN.md
+docs/labeling_handoff.md
+docs/labeling_instructions_for_assistant.md
