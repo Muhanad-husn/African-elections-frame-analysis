@@ -666,16 +666,38 @@ This is the verification pass. Don't do new analysis here — only check that th
 
 ### Completion criteria
 
-- [ ] Every `CLAUDE.md` Done-definition item ticked
-- [ ] README decisions table fully populated
-- [ ] Findings + limitations final
-- [ ] All seven expected decision blocks present in notebooks in five-part form
-- [ ] Smoke tests pass
-- [ ] Hero figure verified at thumbnail size
+- [x] Every `CLAUDE.md` Done-definition item ticked (all 12 boxes)
+- [x] README decisions table fully populated (7 rows × chose / why / sensitivity)
+- [x] Findings + limitations final (the Session-7 "Draft" marker removed; numbers match notebook §9/§10)
+- [x] All seven expected decision blocks present in notebooks in five-part form
+- [x] Smoke tests pass (29 passed, 2 live-gated skipped, in conda `portfolio`)
+- [x] Hero figure verified at thumbnail size (`figures/hero.png`, 800×812 RGBA)
 
 ### Handoff notes
 
-*(final — none)*
+**Executed 2026-05-24. Project closed out. README polished, all 7 decision blocks confirmed in five-part form, Done-definition fully ticked, tests green.**
+
+This was the verification/polish pass — **no new analysis, no `src/` or code-cell changes** (so the Session-7/8 executed notebook outputs remain valid). Only markdown + README + CLAUDE.md were touched.
+
+What changed on disk:
+
+- **`README.md`** — the methodological-decisions table is now fully populated for all **7** decisions (chose / why / sensitivity). The 3 stress-tested rows (dedup, taxonomy, threshold) keep their Session-8 sensitivity wording; the other 4 (outlet attribution, relevance filter, prompt iteration, eval sampling) got chose/why + a *bounded-by-construction* or *stop-condition* sensitivity note. Findings de-drafted. Two placeholders filled: GDELT access date (`2026-05`, manifest-cited) and run time (`02_main` ~7 min cached; classification ~$23/~9–18 h one-time). Intro pointer fixed to name `04_pipeline_eval.ipynb` for the LLM-specific blocks. **Author social URLs left as `[LinkedIn](URL)` / `[Twitter](URL)` placeholders — Muhanad to fill.**
+- **`notebooks/02_main.ipynb` §11** — decisions summary table populated (mirrors README, plus a 5th "Five-part block" pointer column). **§5 eval-sampling block upgraded from the "lightweight (deferred to Session 9)" stub to a full five-part block** (Decision 4) using the now-known observed imbalance (54% abstain; process 62/115; corruption 11, identity 14) and the stratification-check output already in the cell below it.
+- **`notebooks/04_pipeline_eval.ipynb` §5** — converted "Final prompt selection" into a full five-part **"Decision: Prompt iteration & model selection"** block (was a narrative table only). Taxonomy (pre-§5) and threshold (§6) were already five-part.
+- **`CLAUDE.md`** — all Done-definition checkboxes ticked.
+
+How edits were made safely: markdown cells were injected by `cell_id` via a throwaway script (json load → set `source` → dump with `indent=1, ensure_ascii=False`) to avoid the Read-gate loading the notebooks' committed base64 figure outputs into context. Each notebook re-validated with `nbformat.validate` after editing; diffs are 1 cell each (`02`: §11 + §5 sampling; `04`: §5). Scratch files removed.
+
+The seven decision → five-part-block map (all confirmed present):
+1. Outlet attribution → `02` §4 Decision 1
+2. Relevance filter → `02` §4 Decision 2
+3. Dedup → `02` §4 Decision 3
+4. Eval sampling → `02` §5 Decision 4
+5. Taxonomy granularity → `04` (block before §5)
+6. Prompt iteration & model → `04` §5
+7. Confidence threshold → `04` §6
+
+Nothing left open for a Session 10 — the plan is complete. Author LinkedIn/X URLs were supplied by Muhanad and filled into the README footer. All changes committed.
 
 ---
 
@@ -708,4 +730,4 @@ Track decisions made during execution that affect later sessions. Each entry sho
 | 6 | Confidence threshold + production run | Complete (deliverables) / prod run deferred | 2026-05-22 | Threshold block (04 §6) + curve figure + `run_production.py` (smoke-verified) + cost cell (02 §6). Threshold 0.75 stored as `accepted` flag, not filter (gate not frame-neutral). ~$23/~9-18h API run deferred to user. |
 | 7 | Analysis notebook + viz module + hero figure | Complete | 2026-05-24 | Production run was already done by user (100% coverage). viz.py (3 helpers + extras), §7 four comparisons, hero.png (800×812), README findings/limitations. Notebook executes clean end-to-end (17/17 cells); §3 timeout fixed. Headline: African→process +11.9pp, Intl→democracy +10.4pp. 29 tests pass. |
 | 8 | Robustness notebook | Complete | 2026-05-24 | 3 sensitivity sections executed (12 cells, 0 errors) + 3 figures + README sensitivity column. Verdict: taxonomy is the only load-bearing decision (5-frame collapse → gap +11.9/−10.4 → +1.5 pp); threshold (gap stable +11/−10 pp through acc@0.80) and dedup (≤2% probe count change, origin-balanced) are robust. 29 tests green. |
-| 9 | README polish + decisions table + final verification | Not started | | |
+| 9 | README polish + decisions table + final verification | Complete | 2026-05-24 | README decisions table fully populated (7 rows); §5 eval-sampling + `04` §5 prompt-iteration upgraded to full five-part blocks (all 7 now five-part); CLAUDE.md Done-definition fully ticked; 29 tests green; hero 800×812 verified. Verification/polish only — no code or analysis changes. Only open item: author social URLs (user). |

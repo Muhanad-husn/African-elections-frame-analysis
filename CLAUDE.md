@@ -89,17 +89,17 @@ A four-stage pipeline: (1) **ingestion** of GDELT GKG records for ±30 days arou
 
 ## Done definition
 
-- [ ] **Ingestion pipeline**: GDELT GKG records pulled for ±30 days around each election
-- [ ] **Cleaning pipeline**: filter to election-relevant English articles, deduplication, outlet attribution (African vs. International)
-- [ ] **Structured analytic dataset**: parquet with `article_id, date, outlet, outlet_origin, election, themes, text_snippet`
-- [ ] **Frame taxonomy**: security / economy / democracy / identity / process / corruption (codebook documented)
-- [ ] **Hand-labeled eval set**: 200–300 articles, stratified by election and outlet origin — **labeled by Muhanad, not by Claude**
-- [ ] **LLM-as-classifier**: prompt + structured output (OpenRouter API — `deepseek-v4-flash` primary, `minimax-m2.7` fallback; NVIDIA NIM switchable but inactive), with cost logged
-- [ ] **Eval report**: precision/recall/F1 per frame, confusion matrix, qualitative error analysis
-- [ ] **Analysis notebook**: frame distribution by outlet origin, by election, over time around vote day
-- [ ] **Hero figure**: stacked bar of frame mix, African vs. international press, per election
-- [ ] README with **Methodological decisions table**
-- [ ] **Every data-processing decision documented in five-part form**
+- [x] **Ingestion pipeline**: GDELT GKG records pulled for ±30 days around each election
+- [x] **Cleaning pipeline**: filter to election-relevant English articles, deduplication, outlet attribution (African vs. International)
+- [x] **Structured analytic dataset**: parquet with `article_id, date, outlet, outlet_origin, election, themes, text_snippet`
+- [x] **Frame taxonomy**: security / economy / democracy / identity / process / corruption (codebook documented)
+- [x] **Hand-labeled eval set**: 200–300 articles, stratified by election and outlet origin — **labeled by Muhanad, not by Claude**
+- [x] **LLM-as-classifier**: prompt + structured output (OpenRouter API — `deepseek-v4-flash` primary, `minimax-m2.7` fallback; NVIDIA NIM switchable but inactive), with cost logged
+- [x] **Eval report**: precision/recall/F1 per frame, confusion matrix, qualitative error analysis
+- [x] **Analysis notebook**: frame distribution by outlet origin, by election, over time around vote day
+- [x] **Hero figure**: stacked bar of frame mix, African vs. international press, per election
+- [x] README with **Methodological decisions table**
+- [x] **Every data-processing decision documented in five-part form**
 
 ## Expected major decisions to document
 
