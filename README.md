@@ -42,11 +42,23 @@ Each major data-processing decision was made by **diagnostic first, choice secon
 
 ## Findings
 
-*To be filled during implementation. Each finding will be a falsifiable statement anchored in a specific number from the analysis (e.g., "international press allocated X% of frame-share to security in Kenya 2022, vs. Y% from African outlets, p < Z").*
+*Draft (Session 7) — descriptive, not causal; bounded by the limitations below. Full analysis with figures in `notebooks/02_main.ipynb` §7–§9. Numbers are over **framed** articles (those the classifier foregrounded a frame for), pooled across the four elections unless noted.*
+
+1. **African outlets foreground the *mechanics* of elections; international outlets foreground *democratic stakes*.** African coverage gives *process* (registration, counting, results, court challenges) **39.0%** of framed articles vs. **27.1%** international (**+11.9 pp**); international coverage gives *democracy* (institutional health, backsliding/consolidation, civil liberties) **26.9%** vs. **16.5%** African (**+10.4 pp**). These are the two largest origin gaps; every other frame differs by ≤ 3 pp.
+2. **That split is directionally stable across elections — except Senegal.** Process is higher in African coverage in 3 of 4 elections (Nigeria +4.5, Kenya +9.5, South Africa +7.5 pp); democracy is higher in international coverage in the same 3. Senegal 2024 inverts it (both origins ~51–61% *democracy*) because the postponement/constitutional crisis was the story.
+3. **International coverage is far more often too thin to frame.** **61.9%** of international rows abstain (no foregrounded frame) vs. **44.6%** of African rows — international coverage skews to short wire/aggregator briefs.
+4. **Coverage pivots from issues to mechanics around vote day.** *Process* rises **23.4% → 36.7%** from the pre-period (−30…−8 days) to the post-period (+8…+30) while *economy* falls **20.7% → 10.9%**.
+5. **"African framing" is not monolithic.** Within the African block, Nigerian (process **45.7%**) and Kenyan (process **50.1%**) outlets are process-heavy while South African outlets are democracy/economy-balanced (democracy **27.4%**, economy **18.9%**).
 
 ## Limitations
 
-*To be filled during implementation. Expected categories: GDELT coverage bias (it indexes what it indexes), English-only filter excludes francophone-only Senegal coverage from local outlets, LLM-as-classifier is an evaluated approximation not a ground truth, the frame taxonomy is itself a choice, and outlet-origin attribution treats "African" as a single block which it is not.*
+- **GDELT coverage bias.** The corpus is whatever GDELT crawls — English-language, publicly indexed sources. It is not a census of coverage.
+- **English-only filter excludes the francophone Senegalese press.** Senegal's African sample is just 312 framed rows (~18 from `.sn` domains); local Wolof/French framing is largely absent, reachable only via international wires. The Senegal panel is read with caution.
+- **GKG-metadata-only input caps classifier precision** (Decision Log #1). No article bodies were scraped — the model frames a metadata snippet. 54% of hand-labeled eval rows were too thin to frame, and v3's eval micro-F1 is 0.552, so the labels are an *evaluated approximation*, not ground truth. The 0.75 confidence gate is reported as a flag, not applied to the headline, because it is not frame-neutral.
+- **Abstention is informative but shrinks the effective sample.** The framed-only mix is computed on ~38–45% of rows; the abstaining majority carries no frame by construction.
+- **The 6-frame taxonomy is one defensible cut.** The democracy↔process seam is the dominant residual confusion (merging the two lifts eval micro-F1 0.552→0.598); it is stress-tested in `03_robustness.ipynb`, not assumed away.
+- **"African" is a block at the headline level.** Intra-African variation is real (notebook §7.4) and surfaced separately.
+- **Descriptive, not causal.** "Outlet origin X foregrounds frame Y at Z%" — no claim about *why*, or about coverage quality/accuracy.
 
 ## Visual style
 

@@ -526,14 +526,52 @@ All upstream pipeline data is in place. The hero figure is brand-critical: it ha
 
 ### Completion criteria
 
-- [ ] `viz.py` with at least the three helpers
-- [ ] Analysis section in `02_main.ipynb` complete with all four comparisons
-- [ ] `figures/hero.png` renders legibly at 800×800
-- [ ] Findings + limitations sections in `README.md` drafted (not yet polished — that's Session 9)
+- [x] `viz.py` with at least the three helpers (`stacked_frame_bar`, `per_election_panel`, `confusion_matrix_plot` + `frame_share_matrix`, `frame_share_timeline`, `set_style`, Okabe-Ito frame palette; ruff clean)
+- [x] Analysis section in `02_main.ipynb` complete with all four comparisons (headline mix by origin×election, abstention rate, over-time-around-vote, intra-African) — notebook executed end-to-end, 17/17 code cells, 0 errors, outputs committed
+- [x] `figures/hero.png` renders legibly at 800×800 (actual 800×812; visually confirmed)
+- [x] Findings + limitations sections in `README.md` drafted
 
 ### Handoff notes
 
-*(filled during execution)*
+**Executed 2026-05-24. Analysis section + viz module + hero figure complete; notebook runs clean end-to-end.**
+
+The user had already run the deferred production pass (`scripts/run_production.py`) — `data/processed/articles_classified.parquet` is on disk, **100% coverage** (79,372 rows, all 4 elections). So Session 7 was fully unblocked.
+
+What's on disk:
+
+- `src/elections_frames/viz.py` (~300 lines). Public surface: `set_style`, `framed`, `frame_share_matrix`, `stacked_frame_bar`, `per_election_panel`, `frame_share_timeline`, `confusion_matrix_plot`, `save_figure`. Constants `FRAMES` (canonical order) + `FRAME_COLORS` (Okabe-Ito colourblind-safe, hand-mapped). **Aggregation runs over framed rows only** (`pred_primary` non-null → excludes abstentions + the 130 hard-error rows); shares are over the **primary** frame so bars sum to 100%. ruff clean.
+- `notebooks/02_main.ipynb` — §7 (13 new cells), §8 hero cell, §9 findings (5 statements), §10 limitations all written + **executed with outputs committed**. §3 ingestion-status cell rewritten to read `pipeline_counts.csv` + `articles_clean.parquet` instead of `load_cached()` over the 30M-row raw corpus — **this fixes the timeout flagged in the Session 6 handoff**; the notebook now runs top-to-bottom in ~7 min (dominated by the 270 MB probe-cache read in §4).
+- `figures/hero.png` (800×812), `figures/frame_mix_pooled.png`, `figures/frame_timeline_nigeria.png` — committed.
+- `README.md` — Findings (5 numbered, numbers-anchored) + Limitations sections drafted. Decisions table still has placeholder rows (that's Session 9).
+
+**The headline findings (pooled over 4 elections, framed rows only):**
+
+| | African | International | gap |
+|---|---:|---:|---:|
+| **process** | 39.0% | 27.1% | African +11.9 pp |
+| **democracy** | 16.5% | 26.9% | International +10.4 pp |
+
+- African press frames elections as **mechanics/process** (counting, results, court challenges); international press frames them as **democratic stakes** (institutional health, backsliding). All other frames differ ≤3 pp.
+- Direction holds in 3/4 elections; **Senegal 2024 inverts** (both ~51–61% democracy — the postponement/constitutional-crisis story; African n=312, thinnest).
+- **Abstention rate: African 44.6% vs International 61.9%** — international coverage is far more often too-thin-to-frame (wire/aggregator briefs).
+- **Over time:** process rises 23.4%→36.7% (pre→post vote), economy falls 20.7%→10.9% — coverage pivots from issues to mechanics around vote day.
+- **Intra-African heterogeneity:** Nigeria (process 45.7%) + Kenya (process 50.1%) are process-heavy; South Africa is democracy/economy-balanced (democracy 27.4%, economy 18.9%). "African" is not a monolith.
+
+Decision made this session (logged as #8 below): **headline uses ALL framed rows, not the 0.75 `accepted` gate** — the gate is not frame-neutral, so gating would bias the dependent variable. `accepted`-only is the Session-8 robustness lens.
+
+For Session 8 (robustness):
+
+1. **Three sensitivity reruns:** taxonomy granularity (5-frame `democracy+process→governance` collapse — carried from Decision Log #6), confidence threshold ±0.05 (the `accepted` flag at 0.70/0.75/0.80 + accepted-only vs all-framed headline), dedup threshold ±0.1. The headline gap to stress-test is **process(African) − process(International) = +11.9 pp** and **democracy(International) − democracy(African) = +10.4 pp**.
+2. **Reuse `viz.py`.** `frame_share_matrix(df, by, frames=...)` takes a custom `frames` list, so the 5-frame collapse scores honestly. `per_election_panel` / `stacked_frame_bar` work for any subset.
+3. **Edge-desk re-fold robustness** (Decision 1): `cleaning.collapse_edge_to_international` toggle — re-fold `Edge_BBC_Africa` (27) / `Edge_RFI_Afrique` (73) into African. Impact expected tiny (100 rows total).
+4. **The classified parquet keeps every row** (`pred_confidence`, `accepted`, `pred_abstained`), so re-thresholding needs no re-classification — just re-filter.
+
+For Session 9 (README polish + verification):
+
+1. The decisions table in both `README.md` and `02_main.ipynb` §11 still needs populating (chose / why / sensitivity for all 7 decisions).
+2. `02_main.ipynb` now executes clean end-to-end (the §3 timeout is fixed) — Session 9's "run one notebook end-to-end" verification can lean on this.
+3. Findings/limitations in README are *drafted*, not polished — Session 9 finalizes wording.
+4. CLAUDE.md Done-definition checkboxes: hero figure, analysis notebook, viz are now done.
 
 ---
 
@@ -623,6 +661,7 @@ Track decisions made during execution that affect later sessions. Each entry sho
 | 4 | 5 | **Schema relaxed to allow abstention.** `FrameClassification.frames` may be empty (`primary_frame=None`) to mean "no frame clearly foregrounded", matching how 135/250 eval rows were hand-labeled. Loosened from Session-4 `min_length=1`; invalid-vocab still hard-fails; v1 behavior unchanged. | 5, 6 |
 | 5 | 5 | **Production classifier config = prompt `v3` + model `deepseek/deepseek-v4-flash`.** v3 (metadata-format few-shots) is best of 4 versions (micro-F1 0.552). Model A/B: deepseek beats minimax-m2.7 on accuracy, latency, and reliability — minimax stays fallback-only. | 6, 7 |
 | 6 | 5 | **Taxonomy: 6 frames for the headline analysis; `democracy+process→governance` 5-frame collapse carried as the Session-8 robustness alternative.** Democracy↔process is the dominant seam (merge lifts micro-F1 0.552→0.598) but is the substantive distinction the research question targets, so it is stress-tested, not assumed away. | 7, 8 |
+| 8 | 7 | **Headline analysis uses ALL framed rows, not the 0.75 `accepted` gate.** Confirmed with the user at session start. The gate is not frame-neutral (+15pp democracy / −10pp process per Decision #7), so gating the headline would bias the dependent variable; abstentions are excluded from the frame mix but their *rate* is reported as its own finding. `accepted`-only headline is carried as a Session-8 robustness lens. | 8 |
 | 7 | 6 | **Confidence threshold = 0.75, stored as an `accepted` flag, NOT a filter.** Pre-registered ≥0.85 floor is unreachable (metadata-only input caps precision in the high-0.60s; ≥0.85 survives on 5/250 eval rows), so it was relaxed to the 0.75 precision elbow and documented. Crucially, gating at 0.75 is **not frame-neutral** (+15pp democracy / −10pp process), so `articles_classified.parquet` keeps **all** rows + `pred_confidence` + `accepted = framed AND conf≥0.75`. Headline all-framed-vs-accepted is a Session-7 choice; Session-8's ±0.05 sensitivity requires the un-dropped rows. Supersedes the Session-6 plan wording "only rows above threshold". | 7, 8 |
 
 ## Progress Tracker
@@ -635,6 +674,6 @@ Track decisions made during execution that affect later sessions. Each entry sho
 | 4 | Classifier module + prompt v1 (parallel) | Complete | 2026-05-21 | Live smoke green on 5 articles. NIM latency 23-855s/call, 37% transient error rate; retry+fallback wiring exercised. |
 | 5 | Eval loop + prompt iteration | Complete | 2026-05-22 | 4 prompt versions (v1→v4); v3 selected (micro-F1 0.552). Model A/B: deepseek > minimax. Taxonomy: 6 frames. eval.py + tests; notebook executed. 26 tests green. |
 | 6 | Confidence threshold + production run | Complete (deliverables) / prod run deferred | 2026-05-22 | Threshold block (04 §6) + curve figure + `run_production.py` (smoke-verified) + cost cell (02 §6). Threshold 0.75 stored as `accepted` flag, not filter (gate not frame-neutral). ~$23/~9-18h API run deferred to user. |
-| 7 | Analysis notebook + viz module + hero figure | Not started | | |
+| 7 | Analysis notebook + viz module + hero figure | Complete | 2026-05-24 | Production run was already done by user (100% coverage). viz.py (3 helpers + extras), §7 four comparisons, hero.png (800×812), README findings/limitations. Notebook executes clean end-to-end (17/17 cells); §3 timeout fixed. Headline: African→process +11.9pp, Intl→democracy +10.4pp. 29 tests pass. |
 | 8 | Robustness notebook | Not started | | |
 | 9 | README polish + decisions table + final verification | Not started | | |
