@@ -597,13 +597,44 @@ The point of this notebook is to know — before a reader asks — which decisio
 
 ### Completion criteria
 
-- [ ] Three sensitivity sections in `03_robustness.ipynb`
-- [ ] Decisions table in README has sensitivity column populated
-- [ ] Robustness summary paragraph written
+- [x] Three sensitivity sections in `03_robustness.ipynb` (taxonomy collapse, threshold gate sweep, dedup probe sweep — all executed, outputs committed)
+- [x] Decisions table in README has sensitivity column populated (the three stress-tested rows: dedup, taxonomy, confidence threshold)
+- [x] Robustness summary paragraph written (top of `03_robustness.ipynb` — "which decisions are headline-load-bearing")
 
 ### Handoff notes
 
-*(filled during execution)*
+**Executed 2026-05-24. Robustness notebook complete; three sensitivity sections executed end-to-end (12 cells, 0 errors), README sensitivity column populated for the three stress-tested decisions.**
+
+The headline under test (from `02_main.ipynb` §7, pooled, framed rows, edges folded to International): African *process* 39.0% vs International 27.1% (**+11.9 pp**); International *democracy* 26.9% vs African 16.5% (**+10.4 pp**). Baseline reproduced exactly in the robustness setup cell before perturbing.
+
+**Verdict — only the taxonomy choice is load-bearing:**
+
+| Decision | Perturbation | Result | Load-bearing? |
+|---|---|---|---|
+| **Taxonomy granularity** | merge `democracy`+`process` → `governance` (5-frame) | gap collapses **+11.9/−10.4 → +1.5 pp**; governance share 55.6% Afr vs 54.1% Intl | **YES** |
+| **Confidence threshold** | accepted-only @ 0.70/0.75/0.80 vs all-framed | process gap stays +10.5…+12.2 pp, democracy −11.2…−9.0 pp; direction never flips | No |
+| **Dedup threshold** | Jaccard 0.7/0.9 vs 0.8 (probe estimate) | kept-row count moves ≤2%; swing set origin-balanced (73/27 vs corpus 74/26) | No |
+
+What's on disk:
+
+- `notebooks/03_robustness.ipynb` — rewritten from the 4-cell skeleton to 12 cells, executed with outputs committed. Structure: title + summary paragraph → setup (reproduces baseline) → §1 taxonomy (5-frame collapse, pooled + per-election cancellation table + stacked bar) → §2 threshold (gate sweep table + gap-vs-gate line plot) → §3 dedup (probe sweep table + swing-set origin mix + yield bar). Each section ends with a "what the analysis shows" markdown block.
+- `figures/robust_taxonomy_5frame.png`, `figures/robust_threshold_gaps.png`, `figures/robust_dedup_probe.png` — committed.
+- `README.md` — sensitivity column filled for the dedup / taxonomy / confidence-threshold rows (with the actual numbers + `03_robustness.ipynb` section refs). **chose/why columns and the other 4 rows' sensitivity remain Session 9's job.**
+
+Key per-election nuance (§1): the democracy↔process cancellation inside governance is near-total where the two components balance (South Africa +0.8 pp, Nigeria +2.9) and partial where one dominates (Kenya +7.4, process-driven; Senegal +8.3, democracy-driven). The residual is never the original double-digit gap.
+
+Decisions made during execution:
+
+- **Dedup sensitivity is a probe-set estimate, not a full-corpus re-run** (user choice at session start — Decision Log #9). The classified corpus is deduped at 0.8 and cannot be un-deduped, so the headline impact is *bounded* by the origin-balance of the marginal rows rather than recomputed directly. This is a tighter argument than a count delta anyway: a proportional ≤2% change across origins cannot move a between-origin gap.
+- **No 7-frame variant.** The skeleton mentioned "5-frame and 7-frame collapses", but *splitting* a frame into 7 is not a re-aggregation — it needs fresh labels against a new codebook (LLM re-run + ideally a gold re-label), which is out of scope for a sensitivity pass. Documented inline in §1 and noted as a future check. Only the 5-frame *collapse* (re-aggregation of existing labels) is defensible without reclassification.
+
+For Session 9 (README polish + final verification):
+
+1. **README decisions table still needs the chose/why columns for all 7 rows + the sensitivity cells for the other 4** (outlet attribution, relevance filter, prompt iteration, eval sampling). The three I filled (dedup, taxonomy, threshold) are done and numbers-anchored — match that style.
+2. **`02_main.ipynb` §11 decisions table is still placeholder** (`| ... | ... |`) — populate it to mirror the README table.
+3. **The taxonomy limitation in `README.md` + `02_main.ipynb` §10 already points to `03_robustness.ipynb`** and is now accurate (the stress-test exists). No edit needed there, just verify the cross-reference in the consistency pass.
+4. **All 29 smoke tests green** (2 live-gated skipped) after this session — no `src/` changes were made (notebook + README + figures only).
+5. The robustness summary paragraph's framing ("conditional on treating process and democracy as distinct dimensions…") is a good candidate sentence for the README/notebook headline caveat if Session 9 wants to sharpen Finding #1.
 
 ---
 
@@ -662,6 +693,7 @@ Track decisions made during execution that affect later sessions. Each entry sho
 | 5 | 5 | **Production classifier config = prompt `v3` + model `deepseek/deepseek-v4-flash`.** v3 (metadata-format few-shots) is best of 4 versions (micro-F1 0.552). Model A/B: deepseek beats minimax-m2.7 on accuracy, latency, and reliability — minimax stays fallback-only. | 6, 7 |
 | 6 | 5 | **Taxonomy: 6 frames for the headline analysis; `democracy+process→governance` 5-frame collapse carried as the Session-8 robustness alternative.** Democracy↔process is the dominant seam (merge lifts micro-F1 0.552→0.598) but is the substantive distinction the research question targets, so it is stress-tested, not assumed away. | 7, 8 |
 | 8 | 7 | **Headline analysis uses ALL framed rows, not the 0.75 `accepted` gate.** Confirmed with the user at session start. The gate is not frame-neutral (+15pp democracy / −10pp process per Decision #7), so gating the headline would bias the dependent variable; abstentions are excluded from the frame mix but their *rate* is reported as its own finding. `accepted`-only headline is carried as a Session-8 robustness lens. | 8 |
+| 9 | 8 | **Dedup sensitivity done as a probe-set estimate, not a full-corpus re-run** (user choice). The classified corpus is deduped at 0.8 and cannot be un-deduped, so headline impact is bounded via the origin-balance of the marginal "swing" rows (~73/27, matching corpus 74/26) rather than recomputed. Also: **no 7-frame variant** — splitting a frame needs reclassification (out of scope); only the 5-frame `democracy+process→governance` collapse is a defensible re-aggregation. **Finding:** taxonomy is the only headline-load-bearing decision of the three (collapse → gap +1.5 pp); threshold and dedup are robust. | 9 |
 | 7 | 6 | **Confidence threshold = 0.75, stored as an `accepted` flag, NOT a filter.** Pre-registered ≥0.85 floor is unreachable (metadata-only input caps precision in the high-0.60s; ≥0.85 survives on 5/250 eval rows), so it was relaxed to the 0.75 precision elbow and documented. Crucially, gating at 0.75 is **not frame-neutral** (+15pp democracy / −10pp process), so `articles_classified.parquet` keeps **all** rows + `pred_confidence` + `accepted = framed AND conf≥0.75`. Headline all-framed-vs-accepted is a Session-7 choice; Session-8's ±0.05 sensitivity requires the un-dropped rows. Supersedes the Session-6 plan wording "only rows above threshold". | 7, 8 |
 
 ## Progress Tracker
@@ -675,5 +707,5 @@ Track decisions made during execution that affect later sessions. Each entry sho
 | 5 | Eval loop + prompt iteration | Complete | 2026-05-22 | 4 prompt versions (v1→v4); v3 selected (micro-F1 0.552). Model A/B: deepseek > minimax. Taxonomy: 6 frames. eval.py + tests; notebook executed. 26 tests green. |
 | 6 | Confidence threshold + production run | Complete (deliverables) / prod run deferred | 2026-05-22 | Threshold block (04 §6) + curve figure + `run_production.py` (smoke-verified) + cost cell (02 §6). Threshold 0.75 stored as `accepted` flag, not filter (gate not frame-neutral). ~$23/~9-18h API run deferred to user. |
 | 7 | Analysis notebook + viz module + hero figure | Complete | 2026-05-24 | Production run was already done by user (100% coverage). viz.py (3 helpers + extras), §7 four comparisons, hero.png (800×812), README findings/limitations. Notebook executes clean end-to-end (17/17 cells); §3 timeout fixed. Headline: African→process +11.9pp, Intl→democracy +10.4pp. 29 tests pass. |
-| 8 | Robustness notebook | Not started | | |
+| 8 | Robustness notebook | Complete | 2026-05-24 | 3 sensitivity sections executed (12 cells, 0 errors) + 3 figures + README sensitivity column. Verdict: taxonomy is the only load-bearing decision (5-frame collapse → gap +11.9/−10.4 → +1.5 pp); threshold (gap stable +11/−10 pp through acc@0.80) and dedup (≤2% probe count change, origin-balanced) are robust. 29 tests green. |
 | 9 | README polish + decisions table + final verification | Not started | | |
